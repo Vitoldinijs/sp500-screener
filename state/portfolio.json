@@ -1,0 +1,30 @@
+{
+  "cash": 10000.0,
+  "start_capital": 10000.0,
+  "bar_count": 1,
+  "last_run_date": "2026-08-24",
+  "positions": [],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "DELL",
+      "sector": "Information Technology",
+      "name": "Dell Technologies",
+      "notional": 476.19,
+      "entry_score": 2.9276230672106545,
+      "rank": 1,
+      "blocks": {
+        "value": null,
+        "quality": null,
+        "growth": null,
+        "momentum": 2.9276230672106545
+      },
+      "signal_close": 433.19000244140625,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score"
+    }
+  ],
+  "next_trade_id": 1,
+  "version": 2
+}
