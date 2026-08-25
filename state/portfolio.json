@@ -1,30 +1,56 @@
 {
-  "cash": 10000.0,
+  "cash": 9523.81,
   "start_capital": 10000.0,
-  "bar_count": 1,
-  "last_run_date": "2026-08-24",
-  "positions": [],
-  "pending_orders": [
+  "bar_count": 2,
+  "last_run_date": "2026-08-25",
+  "positions": [
     {
-      "side": "BUY",
+      "trade_id": 1,
       "ticker": "DELL",
       "sector": "Information Technology",
       "name": "Dell Technologies",
-      "notional": 476.19,
+      "shares": 1.074651,
+      "entry_date": "2026-08-25",
+      "entry_price": 443.1115,
+      "cost_basis": 476.19,
+      "entry_bar": 2,
       "entry_score": 2.9276230672106545,
-      "rank": 1,
-      "blocks": {
+      "entry_blocks": {
         "value": null,
         "quality": null,
         "growth": null,
         "momentum": 2.9276230672106545
       },
-      "signal_close": 433.19000244140625,
+      "entry_rank": 1,
+      "av_verdict": "confirmed",
+      "last_price": 451.5,
+      "last_value": 485.2,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.018921
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "MU",
+      "sector": "Information Technology",
+      "name": "Micron Technology",
+      "notional": 476.62,
+      "entry_score": 1.809956883354321,
+      "rank": 1,
+      "blocks": {
+        "value": 0.14110516271355572,
+        "quality": 1.6799105003363215,
+        "growth": 4.206596031118561,
+        "momentum": 2.3888610159612993
+      },
+      "signal_close": 932.969970703125,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 1,
+  "next_trade_id": 2,
   "version": 2
 }

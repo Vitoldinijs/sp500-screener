@@ -1,2 +1,3 @@
 run_time,data_date,universe_size,eligible_count,candidate,av_verdict,av_reason,av_calls,price_provider,fundamentals_asof,state_version,equity,cash,positions
 2026-08-25 01:45 UTC,2026-08-24,503,501,DELL,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,—,2,10000.0,10000.0,0
+2026-08-25 22:49 UTC,2026-08-25,503,499,MU,confirmed,price confirmed; OVERVIEW unavailable,4,yfinance,2026-08-25,2,10009.01,9523.81,1
