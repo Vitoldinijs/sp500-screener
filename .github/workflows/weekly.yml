@@ -1,0 +1,90 @@
+# ============================================================================
+#  Weekly fundamentals refresh.
+#
+#  P/E, ROE, margins and the rest only move on quarterly reports, so polling
+#  500 tickers every day would be pure waste and the main way to get rate
+#  limited. Once a week is plenty.
+#
+#  Each run appends a snapshot stamped with its `asof` date rather than
+#  overwriting the last one. That accumulating history is what lets the
+#  screener read fundamentals point-in-time (as they were known on the day)
+#  instead of retroactively applying today's numbers to old decisions.
+# ============================================================================
+name: weekly-fundamentals
+
+on:
+  schedule:
+    # Sunday 06:00 UTC — markets shut, nothing else is running.
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Only fetch the first N tickers (for testing)"
+        type: string
+        default: ""
+
+concurrency:
+  group: portfolio-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fundamentals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90         # ~500 sequential .info calls is slow by nature
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Refresh fundamentals
+        env:
+          ALPHAVANTAGE_KEY: ${{ secrets.ALPHAVANTAGE_KEY }}
+        run: |
+          python -m screener weekly \
+            ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
+
+      - name: Commit the new snapshot
+        run: |
+          git config user.name  "screener-bot"
+          git config user.email "screener-bot@users.noreply.github.com"
+          git add -A state
+          if git diff --staged --quiet; then
+            echo "no new fundamentals data"
+            exit 0
+          fi
+          git commit -m "weekly fundamentals $(date -u +%Y-%m-%d)"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin ${{ github.ref_name }} && \
+            git push origin HEAD:${{ github.ref_name }} && exit 0
+            echo "push attempt $attempt failed; retrying"
+            sleep 5
+          done
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Weekly fundamentals — $(date -u +'%Y-%m-%d')"
+            echo ""
+            if [ -f state/fundamentals.csv ]; then
+              echo "snapshot rows on file: $(( $(wc -l < state/fundamentals.csv) - 1 ))"
+              echo ""
+              echo "distinct snapshot dates:"
+              echo '```'
+              cut -d, -f1 state/fundamentals.csv | tail -n +2 | sort -u | tail -8
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

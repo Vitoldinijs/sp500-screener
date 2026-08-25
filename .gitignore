@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+
+# Price cache is rebuilt on every run — keep it out of git history so the
+# repo doesn't grow by megabytes a day. Everything else in state/ IS committed
+# on purpose: it's the portfolio's memory and gives a readable audit trail.
+state/cache/prices.csv.gz
+
+# Local secrets — the real key belongs in GitHub Secrets, never in the repo.
+.env

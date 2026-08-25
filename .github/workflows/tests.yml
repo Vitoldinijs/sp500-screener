@@ -1,0 +1,76 @@
+# ============================================================================
+#  Continuous integration: run the test suite on every push.
+#
+#  The trading jobs commit to this repo unattended, so a regression that slips
+#  in would quietly corrupt the portfolio's state and there would be no human
+#  watching. This is the guardrail.
+# ============================================================================
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python tests/test_screener.py
+
+      - name: Short end-to-end simulation
+        # 40 days is enough to fill the ladder, roll positions and prove the
+        # accounting identity holds. The full 300-day run is a local exercise.
+        run: python scripts/simulate.py --days 40
+
+      - name: Config sanity check
+        # Catches the YAML gotcha where `5.0e6` parses as a string, plus
+        # weights that no longer sum to 1 after a bad manual edit.
+        run: |
+          python - <<'PY'
+          import yaml, sys
+          cfg = yaml.safe_load(open("config.yml"))
+          bad = []
+          for k, v in cfg["filters"].items():
+              if not isinstance(v, (int, float)):
+                  bad.append(f"filters.{k} is {type(v).__name__} ({v!r}), expected a number")
+          w = cfg["factor_weights"]
+          if abs(sum(w.values()) - 1.0) > 1e-3:
+              bad.append(f"factor_weights sum to {sum(w.values())}, expected 1.0")
+          L = cfg["learning"]
+          for k, v in w.items():
+              if not (L["weight_min"] <= v <= L["weight_max"]):
+                  bad.append(f"factor_weights.{k}={v} outside [{L['weight_min']}, {L['weight_max']}]")
+          for name in cfg["metric_blocks"]:
+              if name not in w:
+                  bad.append(f"block {name!r} has no weight")
+          for block, metrics in cfg["metric_blocks"].items():
+              for m in metrics:
+                  if m not in cfg["metric_direction"]:
+                      bad.append(f"metric {m!r} has no direction")
+          if bad:
+              print("config.yml problems:")
+              for b in bad:
+                  print("  *", b)
+              sys.exit(1)
+          print("config.yml looks sane")
+          PY

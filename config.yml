@@ -1,0 +1,106 @@
+# ============================================================================
+#  S&P 500 Paper-Trading Screener — configuration
+#  Every tunable lives here. The self-learning job edits ONLY the
+#  `factor_weights` block (within the bounds below) and logs each change.
+# ============================================================================
+
+strategy:
+  name: "ladder-momentum-value"
+  start_capital: 10000.0        # virtual USD
+  n_slots: 21                   # target number of simultaneous positions
+  hold_days: 21                 # trading days to hold each position
+  buys_per_day: 1               # one new entry per trading day
+  allow_duplicate_tickers: false
+  max_positions_per_sector: 7   # soft diversification cap (of n_slots)
+  execution: "next_open"        # fills at next session's open (no lookahead)
+  slippage_bps: 5.0             # 0.05% each way, models spread + impact
+  commission_per_trade: 0.0     # US brokers are mostly commission-free
+  fractional_shares: true
+
+# ---- Hard eligibility filters (applied before scoring) ---------------------
+filters:
+  min_price: 5.0                # avoid sub-$5 names
+  min_dollar_volume: 5000000    # 20-day avg $ volume, liquidity floor
+  min_market_cap: 2000000000    # small-cap floor ($2B)
+  min_history_days: 200         # need enough bars for MA200 / momentum
+  max_missing_fundamentals: 3   # skip names missing too many ratios
+
+# ---- Factor blocks ---------------------------------------------------------
+# Composite score = sum(block_weight * block_z). Block z = mean of its
+# winsorized, cross-sectional z-scored metrics (sign-adjusted so higher=better).
+factor_weights:
+  value: 0.30
+  quality: 0.25
+  growth: 0.15
+  momentum: 0.30
+
+# Per-metric direction: +1 means higher raw value is better, -1 means lower.
+metric_direction:
+  # value
+  pe_ratio: -1
+  pb_ratio: -1
+  ev_ebitda: -1
+  ps_ratio: -1
+  fcf_yield: 1
+  # quality
+  roe: 1
+  gross_margin: 1
+  net_margin: 1
+  net_debt_ebitda: -1
+  # growth
+  revenue_growth: 1
+  earnings_growth: 1
+  # momentum
+  mom_3m: 1
+  mom_6m: 1
+  mom_12m_1m: 1        # 12-month return skipping the most recent month
+  above_ma200: 1
+  rsi_centered: 1      # -|RSI-50|, penalises extremes (overbought/oversold)
+
+metric_blocks:
+  value: [pe_ratio, pb_ratio, ev_ebitda, ps_ratio, fcf_yield]
+  quality: [roe, gross_margin, net_margin, net_debt_ebitda]
+  growth: [revenue_growth, earnings_growth]
+  momentum: [mom_3m, mom_6m, mom_12m_1m, above_ma200, rsi_centered]
+
+winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
+
+# ---- Self-learning ---------------------------------------------------------
+learning:
+  enabled: true
+  mode: "auto_bounded"          # auto_bounded | propose_pr | off
+  weight_min: 0.05              # no block weight may fall below this
+  weight_max: 0.50              # ...or exceed this
+  max_step_per_month: 0.05      # weights move at most this much per run
+  lookback_months: 18           # walk-forward training window
+  validation_months: 3          # out-of-sample check window
+  min_trades_for_update: 40     # need this many closed trades before tuning
+  rollback_if_worse: true       # revert if validation Sharpe drops
+
+# ---- Data sources ----------------------------------------------------------
+data:
+  price_provider: "yfinance"    # yfinance -> stooq fallback (both keyless)
+  fundamentals_provider: "yfinance"
+  alpha_vantage:
+    enabled: true
+    daily_budget: 22            # stay under the 25/day free cap
+    use_for: "verify_candidate" # only confirm the single chosen name/day
+  benchmark: "SPY"
+  price_lookback_days: 420      # ~ 18 months of daily bars
+
+# ---- Files -----------------------------------------------------------------
+paths:
+  state_dir: "state"
+  cache_dir: "state/cache"
+  portfolio_json: "state/portfolio.json"          # committed: positions + cash
+  trades_csv: "state/trades.csv"                  # committed: closed trades
+  equity_csv: "state/equity_curve.csv"            # committed: daily equity
+  screen_csv: "state/last_screen.csv"             # committed: today's ranking
+  factor_history_csv: "state/factor_history.csv"  # committed: scores + fwd rets
+  fundamentals_csv: "state/fundamentals.csv"      # committed weekly -> PIT hist
+  weights_history: "state/weights_history.csv"    # committed: learning log
+  run_log: "state/run_log.csv"                    # committed: one row per run
+  prices_cache: "state/cache/prices.csv.gz"       # gitignored, rebuilt daily
+  av_usage: "state/cache/av_usage.json"           # API quota bookkeeping
+  excel_report: "Portfolio.xlsx"                  # committed at repo root
+  universe_csv: "screener/data/sp500.csv"         # fallback constituent list
