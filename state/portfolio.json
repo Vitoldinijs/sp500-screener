@@ -1,8 +1,8 @@
 {
-  "cash": 9523.81,
+  "cash": 9047.189999999999,
   "start_capital": 10000.0,
-  "bar_count": 2,
-  "last_run_date": "2026-08-25",
+  "bar_count": 3,
+  "last_run_date": "2026-08-26",
   "positions": [
     {
       "trade_id": 1,
@@ -23,34 +23,59 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 451.5,
-      "last_value": 485.2,
-      "bars_held": 0,
+      "last_price": 463.82,
+      "last_value": 498.44,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": 0.018921
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": 0.046725
+    },
     {
-      "side": "BUY",
+      "trade_id": 2,
       "ticker": "MU",
       "sector": "Information Technology",
       "name": "Micron Technology",
-      "notional": 476.62,
+      "shares": 0.514596,
+      "entry_date": "2026-08-26",
+      "entry_price": 926.2029,
+      "cost_basis": 476.62,
+      "entry_bar": 3,
       "entry_score": 1.809956883354321,
-      "rank": 1,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.14110516271355572,
         "quality": 1.6799105003363215,
         "growth": 4.206596031118561,
         "momentum": 2.3888610159612993
       },
-      "signal_close": 932.969970703125,
+      "entry_rank": 1,
+      "av_verdict": "confirmed",
+      "last_price": 938.4,
+      "last_value": 482.9,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.013176
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "SNDK",
+      "sector": "Information Technology",
+      "name": "Sandisk",
+      "notional": 477.55,
+      "entry_score": 1.6552479202277222,
+      "rank": 2,
+      "blocks": {
+        "value": -0.29794772165912603,
+        "quality": 1.8788611516325975,
+        "growth": 4.026096567149331,
+        "momentum": 2.236674879149703
+      },
+      "signal_close": 1499.3699951171875,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 2,
+  "next_trade_id": 3,
   "version": 2
 }
