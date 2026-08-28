@@ -1,8 +1,8 @@
 {
-  "cash": 9047.189999999999,
+  "cash": 8569.64,
   "start_capital": 10000.0,
-  "bar_count": 3,
-  "last_run_date": "2026-08-26",
+  "bar_count": 4,
+  "last_run_date": "2026-08-27",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 463.82,
-      "last_value": 498.44,
-      "bars_held": 1,
+      "last_price": 472.26,
+      "last_value": 507.51,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": 0.046725
+      "unrealised_pct": 0.065772
     },
     {
       "trade_id": 2,
@@ -48,34 +48,59 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 938.4,
-      "last_value": 482.9,
-      "bars_held": 0,
+      "last_price": 935.39,
+      "last_value": 481.35,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": 0.013176
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": 0.009924
+    },
     {
-      "side": "BUY",
+      "trade_id": 3,
       "ticker": "SNDK",
       "sector": "Information Technology",
       "name": "Sandisk",
-      "notional": 477.55,
+      "shares": 0.308058,
+      "entry_date": "2026-08-27",
+      "entry_price": 1550.1948,
+      "cost_basis": 477.55,
+      "entry_bar": 4,
       "entry_score": 1.6552479202277222,
-      "rank": 2,
-      "blocks": {
+      "entry_blocks": {
         "value": -0.29794772165912603,
         "quality": 1.8788611516325975,
         "growth": 4.026096567149331,
         "momentum": 2.236674879149703
       },
-      "signal_close": 1499.3699951171875,
+      "entry_rank": 2,
+      "av_verdict": "confirmed",
+      "last_price": 1484.95,
+      "last_value": 457.45,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.04209
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "WDC",
+      "sector": "Information Technology",
+      "name": "Western Digital",
+      "notional": 476.95,
+      "entry_score": 1.1354517347845436,
+      "rank": 3,
+      "blocks": {
+        "value": -0.6552990140462744,
+        "quality": 1.9184400524856167,
+        "growth": 3.032907322180939,
+        "momentum": 1.32498442516627
+      },
+      "signal_close": 462.0,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 3,
+  "next_trade_id": 4,
   "version": 2
 }
