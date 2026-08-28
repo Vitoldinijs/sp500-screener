@@ -11,7 +11,7 @@ strategy:
   hold_days: 21                 # trading days to hold each position
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
-  max_positions_per_sector: 7   # soft diversification cap (of n_slots)
+  max_positions_per_sector: 5   # soft diversification cap (of n_slots)
   execution: "next_open"        # fills at next session's open (no lookahead)
   slippage_bps: 5.0             # 0.05% each way, models spread + impact
   commission_per_trade: 0.0     # US brokers are mostly commission-free
