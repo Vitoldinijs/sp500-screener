@@ -1,8 +1,8 @@
 {
-  "cash": 8569.64,
+  "cash": 8092.69,
   "start_capital": 10000.0,
-  "bar_count": 4,
-  "last_run_date": "2026-08-27",
+  "bar_count": 5,
+  "last_run_date": "2026-08-28",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 472.26,
-      "last_value": 507.51,
-      "bars_held": 2,
+      "last_price": 456.24,
+      "last_value": 490.3,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.065772
+      "unrealised_pct": 0.029631
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 935.39,
-      "last_value": 481.35,
-      "bars_held": 1,
+      "last_price": 932.86,
+      "last_value": 480.05,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": 0.009924
+      "unrealised_pct": 0.007197
     },
     {
       "trade_id": 3,
@@ -73,34 +73,59 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1484.95,
-      "last_value": 457.45,
-      "bars_held": 0,
+      "last_price": 1484.98,
+      "last_value": 457.46,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": -0.04209
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": -0.042069
+    },
     {
-      "side": "BUY",
+      "trade_id": 4,
       "ticker": "WDC",
       "sector": "Information Technology",
       "name": "Western Digital",
-      "notional": 476.95,
+      "shares": 1.031174,
+      "entry_date": "2026-08-28",
+      "entry_price": 462.5311,
+      "cost_basis": 476.95,
+      "entry_bar": 5,
       "entry_score": 1.1354517347845436,
-      "rank": 3,
-      "blocks": {
+      "entry_blocks": {
         "value": -0.6552990140462744,
         "quality": 1.9184400524856167,
         "growth": 3.032907322180939,
         "momentum": 1.32498442516627
       },
-      "signal_close": 462.0,
+      "entry_rank": 3,
+      "av_verdict": "confirmed",
+      "last_price": 459.45,
+      "last_value": 473.77,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.006667
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "VLO",
+      "sector": "Energy",
+      "name": "Valero Energy",
+      "notional": 475.92,
+      "entry_score": 1.0984543480986035,
+      "rank": 4,
+      "blocks": {
+        "value": 0.72925464828006,
+        "quality": -0.30487217108879766,
+        "growth": 2.9835506628113277,
+        "momentum": 1.6945446565502862
+      },
+      "signal_close": 352.3599853515625,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 4,
+  "next_trade_id": 5,
   "version": 2
 }
