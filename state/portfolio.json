@@ -1,8 +1,8 @@
 {
-  "cash": 8092.69,
+  "cash": 7616.7699999999995,
   "start_capital": 10000.0,
-  "bar_count": 5,
-  "last_run_date": "2026-08-28",
+  "bar_count": 6,
+  "last_run_date": "2026-08-31",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 456.24,
-      "last_value": 490.3,
-      "bars_held": 3,
+      "last_price": 456.01,
+      "last_value": 490.05,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": 0.029631
+      "unrealised_pct": 0.029106
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 932.86,
-      "last_value": 480.05,
-      "bars_held": 2,
+      "last_price": 958.73,
+      "last_value": 493.36,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.007197
+      "unrealised_pct": 0.035122
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1484.98,
-      "last_value": 457.46,
-      "bars_held": 1,
+      "last_price": 1566.7,
+      "last_value": 482.63,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": -0.042069
+      "unrealised_pct": 0.010638
     },
     {
       "trade_id": 4,
@@ -98,34 +98,59 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 459.45,
-      "last_value": 473.77,
-      "bars_held": 0,
+      "last_price": 450.55,
+      "last_value": 464.6,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": -0.006667
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": -0.025894
+    },
     {
-      "side": "BUY",
+      "trade_id": 5,
       "ticker": "VLO",
       "sector": "Energy",
       "name": "Valero Energy",
-      "notional": 475.92,
+      "shares": 1.321486,
+      "entry_date": "2026-08-31",
+      "entry_price": 360.14,
+      "cost_basis": 475.92,
+      "entry_bar": 6,
       "entry_score": 1.0984543480986035,
-      "rank": 4,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.72925464828006,
         "quality": -0.30487217108879766,
         "growth": 2.9835506628113277,
         "momentum": 1.6945446565502862
       },
-      "signal_close": 352.3599853515625,
+      "entry_rank": 4,
+      "av_verdict": "confirmed",
+      "last_price": 358.92,
+      "last_value": 474.31,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.003383
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "MPC",
+      "sector": "Energy",
+      "name": "Marathon Petroleum",
+      "notional": 477.22,
+      "entry_score": 0.9280120270881818,
+      "rank": 6,
+      "blocks": {
+        "value": 0.6975868904074245,
+        "quality": -0.388014448215243,
+        "growth": 2.535380266835807,
+        "momentum": 1.451441773314647
+      },
+      "signal_close": 373.32000732421875,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 5,
+  "next_trade_id": 6,
   "version": 2
 }

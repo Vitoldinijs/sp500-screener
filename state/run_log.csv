@@ -4,3 +4,4 @@ run_time,data_date,universe_size,eligible_count,candidate,av_verdict,av_reason,a
 2026-08-27 03:22 UTC,2026-08-26,503,499,SNDK,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-08-25,2,10028.53,9047.19,2
 2026-08-28 06:10 UTC,2026-08-27,503,499,WDC,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-08-25,2,10015.95,8569.64,3
 2026-08-29 03:44 UTC,2026-08-28,503,499,VLO,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-08-25,2,9994.27,8092.69,4
+2026-09-01 01:19 UTC,2026-08-31,503,499,MPC,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-08-30,2,10021.72,7616.77,5
