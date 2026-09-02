@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sp500-screener</title>
+<meta name="description" content="Daily paper-trading ladder over the S&amp;P 500 — factor scores, open positions, and performance.">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1114;
+    --panel: #12171b;
+    --panel-2: #171d22;
+    --ink: #e8e6e0;
+    --muted: #838b93;
+    --faint: #4c545c;
+    --accent: #d4a24c;
+    --gain: #5fae84;
+    --loss: #c2645c;
+    --line: rgba(232, 230, 224, 0.09);
+    --sans: "IBM Plex Sans", -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body { padding: 0 0 6rem; }
+
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+  }
+
+  /* ---- top bar ---------------------------------------------------- */
+  header.top {
+    border-bottom: 1px solid var(--line);
+    padding: 1.4rem 0;
+  }
+  header.top .wrap { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  header.top h1 { font-size: 1.05rem; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+  header.top .strategy { color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+
+  /* ---- hero -------------------------------------------------------- */
+  .hero {
+    padding: 2.4rem 0 1.6rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 1.5rem;
+  }
+  .hero .label { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.35rem; }
+  .hero .equity { font-family: var(--mono); font-size: clamp(2.2rem, 7vw, 3.4rem); font-weight: 500; line-height: 1; }
+  .hero .delta { margin-top: 0.5rem; font-family: var(--mono); font-size: 1rem; }
+  .hero .bench { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+  .hero svg.spark { display: block; width: 220px; height: 64px; }
+  @media (max-width: 560px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero svg.spark { width: 100%; height: 56px; }
+  }
+
+  .gain { color: var(--gain); }
+  .loss { color: var(--loss); }
+  .accent { color: var(--accent); }
+
+  /* ---- stat strip ---------------------------------------------------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .stat { padding: 0.9rem 0.2rem; border-left: 1px solid var(--line); }
+  .stat:first-child { border-left: none; }
+  .stat .k { color: var(--muted); font-size: 0.72rem; margin-bottom: 0.3rem; }
+  .stat .v { font-family: var(--mono); font-size: 1.05rem; }
+
+  /* ---- sections ------------------------------------------------------- */
+  section { padding: 2.2rem 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  section h2 { font-size: 0.95rem; font-weight: 600; margin: 0 0 1rem; }
+  section .sub { color: var(--muted); font-size: 0.82rem; margin: -0.6rem 0 1.1rem; }
+  section.empty p { color: var(--muted); font-size: 0.88rem; }
+
+  .chart-wrap { background: var(--panel); padding: 1rem; }
+  svg.chart { display: block; width: 100%; height: auto; }
+  .chart-legend { display: flex; gap: 1.3rem; margin-top: 0.7rem; font-size: 0.8rem; color: var(--muted); }
+  .chart-legend span.sw { display: inline-block; width: 10px; height: 2px; margin-right: 0.4rem; vertical-align: middle; }
+
+  /* ---- tables ----------------------------------------------------------- */
+  .tbl-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 0.75rem; border-bottom: 1px solid var(--line); }
+  td { border-bottom: 1px solid var(--line); font-family: var(--mono); }
+  td.name-cell { font-family: var(--sans); }
+  tbody tr:hover td { background: var(--panel); }
+  td.num, th.num { text-align: right; }
+  .ticker-badge {
+    background: var(--panel-2);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-weight: 500;
+  }
+
+  /* ---- sector bars -------------------------------------------------------- */
+  .sector-row { display: grid; grid-template-columns: 150px 1fr 3.2rem; align-items: center; gap: 0.7rem; padding: 0.4rem 0; font-size: 0.85rem; }
+  .sector-row .name { color: var(--ink); }
+  .sector-track { position: relative; height: 8px; background: var(--panel); }
+  .sector-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+  .sector-cap-mark { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+  .sector-row .count { text-align: right; color: var(--muted); font-family: var(--mono); }
+
+  /* ---- factor weight bars -------------------------------------------------- */
+  .weight-row { display: grid; grid-template-columns: 110px 1fr 3.6rem; align-items: center; gap: 0.7rem; padding: 0.35rem 0; font-size: 0.85rem; }
+  .weight-track { height: 8px; background: var(--panel); }
+  .weight-fill { height: 100%; background: var(--accent); }
+  .weight-row .pct { text-align: right; font-family: var(--mono); color: var(--muted); }
+
+  footer { padding: 2.4rem 0 0; color: var(--faint); font-size: 0.78rem; line-height: 1.6; }
+
+  .state-msg { padding: 4rem 0; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <h1>sp500-screener</h1>
+    <span class="strategy" id="strategyLabel">loading —</span>
+  </div>
+</header>
+
+<div class="wrap" id="app">
+  <div class="state-msg" id="stateMsg">Loading the latest run…</div>
+</div>
+
+<script>
+const $ = (sel, el = document) => el.querySelector(sel);
+const app = $('#app');
+
+const fmtUSD = (v) => v == null ? '—' :
+  '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtPct = (v, digits = 2) => v == null ? '—' :
+  (v >= 0 ? '+' : '') + (v * 100).toFixed(digits) + '%';
+const pctClass = (v) => v == null ? '' : (v > 0 ? 'gain' : v < 0 ? 'loss' : '');
+const fmtNum = (v, digits = 2) => v == null ? '—' : Number(v).toFixed(digits);
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const d = new Date(s + (s.length === 10 ? 'T00:00:00Z' : ''));
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};
+const el = (tag, attrs = {}, children = []) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'text') e.textContent = v;
+    else if (k === 'html') e.innerHTML = v;
+    else if (k === 'class') e.className = v;
+    else e.setAttribute(k, v);
+  }
+  (Array.isArray(children) ? children : [children]).forEach(c => c && e.appendChild(c));
+  return e;
+};
+
+/* ---- tiny dependency-free SVG line chart -------------------------------- */
+function lineChart(series, { width = 760, height = 220, pad = 6 } = {}) {
+  const all = series.flatMap(s => s.values.filter(v => v != null));
+  if (!all.length) return el('div', { text: 'not enough data yet' });
+  const min = Math.min(...all), max = Math.max(...all);
+  const span = (max - min) || 1;
+  const n = Math.max(...series.map(s => s.values.length));
+  const x = i => pad + (i / Math.max(1, n - 1)) * (width - 2 * pad);
+  const y = v => height - pad - ((v - min) / span) * (height - 2 * pad);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'chart');
+  svg.setAttribute('preserveAspectRatio', 'none');
+
+  series.forEach(s => {
+    const pts = s.values.map((v, i) => v == null ? null : `${x(i)},${y(v)}`).filter(Boolean);
+    if (pts.length < 2) return;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    path.setAttribute('points', pts.join(' '));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', s.color);
+    path.setAttribute('stroke-width', s.width || 1.6);
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    const len = pts.length * 40;
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len;
+    path.style.transition = 'stroke-dashoffset 900ms ease-out';
+    svg.appendChild(path);
+    requestAnimationFrame(() => requestAnimationFrame(() => { path.style.strokeDashoffset = 0; }));
+  });
+  return svg;
+}
+
+/* ---- sections ------------------------------------------------------------- */
+function renderHero(d) {
+  const stats = d.stats || {};
+  const eq = (d.equity_curve || []).map(r => r.equity);
+  const bench = (d.equity_curve || []).map(r => r.benchmark_equity);
+
+  const hero = el('div', { class: 'hero' });
+  const left = el('div');
+  left.append(
+    el('div', { class: 'label', text: 'Portfolio equity' }),
+    el('div', { class: 'equity num', text: fmtUSD(d.portfolio ? d.portfolio.equity : null) }),
+    el('div', { class: `delta num ${pctClass(stats.total_return)}`, text: fmtPct(stats.total_return) + ' since inception' }),
+    el('div', {
+      class: 'bench',
+      text: stats.benchmark_return != null
+        ? `S&P 500 (SPY) over the same span: ${fmtPct(stats.benchmark_return)}`
+        : 'Benchmark not available yet'
+    }),
+  );
+  hero.appendChild(left);
+  if (eq.filter(v => v != null).length > 1) {
+    hero.appendChild(lineChart(
+      [{ values: eq, color: 'var(--accent)'.includes('var') ? '#d4a24c' : '#d4a24c', width: 1.8 }],
+      { width: 220, height: 64, pad: 3 }
+    ));
+    $('svg', hero).classList.add('spark');
+  }
+  return hero;
+}
+
+function renderStats(d) {
+  const s = d.stats || {};
+  const cells = [
+    ['Sharpe', fmtNum(s.sharpe, 2)],
+    ['CAGR', s.cagr != null ? fmtPct(s.cagr, 1) : '—'],
+    ['Max drawdown', s.max_drawdown != null ? fmtPct(s.max_drawdown, 1) : '—'],
+    ['Win rate', s.win_rate != null ? fmtPct(s.win_rate, 0) : '—'],
+    ['Closed trades', s.n_trades ?? '—'],
+    ['Avg hold (days)', fmtNum(s.avg_hold, 1)],
+    ['Days live', s.days_live ?? '—'],
+  ];
+  const wrap = el('div', { class: 'stats' });
+  cells.forEach(([k, v]) => wrap.appendChild(el('div', { class: 'stat' }, [
+    el('div', { class: 'k', text: k }),
+    el('div', { class: 'v', text: String(v) }),
+  ])));
+  return wrap;
+}
+
+function renderEquitySection(d) {
+  const rows = d.equity_curve || [];
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Equity curve' }));
+  sec.appendChild(el('div', { class: 'sub', text: `Last ${rows.length} trading day${rows.length === 1 ? '' : 's'} of committed state.` }));
+  if (rows.length < 2) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'Not enough history yet — check back after a few daily runs.' }));
+    return sec;
+  }
+  const chartWrap = el('div', { class: 'chart-wrap' });
+  chartWrap.appendChild(lineChart([
+    { values: rows.map(r => r.equity), color: '#d4a24c', width: 2 },
+    { values: rows.map(r => r.benchmark_equity), color: '#5b6470', width: 1.4 },
+  ], { width: 800, height: 240 }));
+  sec.appendChild(chartWrap);
+  const legend = el('div', { class: 'chart-legend' });
+  legend.appendChild(el('span', { html: '<span class="sw" style="background:#d4a24c"></span>Screener' }));
+  legend.appendChild(el('span', { html: '<span class="sw" style="background:#5b6470"></span>S&amp;P 500 (SPY)' }));
+  sec.appendChild(legend);
+  return sec;
+}
+
+function renderPositions(d) {
+  const p = d.portfolio || {};
+  const positions = p.positions || [];
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Open positions' }));
+  sec.appendChild(el('div', {
+    class: 'sub',
+    text: `${p.n_positions ?? 0} of ${p.n_slots ?? '—'} ladder slots filled · cash ${fmtUSD(p.cash)}`
+  }));
+  if (!positions.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'No open positions in the ladder right now.' }));
+  } else {
+    const table = el('table');
+    table.appendChild(el('thead', {}, el('tr', {}, [
+      el('th', { text: 'ticker' }), el('th', { text: 'sector' }),
+      el('th', { class: 'num', text: 'entry' }), el('th', { class: 'num', text: 'entry px' }),
+      el('th', { class: 'num', text: 'last px' }), el('th', { class: 'num', text: 'unrealised' }),
+      el('th', { class: 'num', text: 'held' }),
+    ])));
+    const tbody = el('tbody');
+    positions.forEach(row => {
+      const held = row.bars_held != null ? `${row.bars_held}/${d.strategy ? d.strategy.hold_days : '?'}d` : '—';
+      tbody.appendChild(el('tr', {}, [
+        el('td', {}, el('span', { class: 'ticker-badge', text: row.ticker })),
+        el('td', { class: 'name-cell', text: row.sector || '—' }),
+        el('td', { class: 'num', text: fmtDate(row.entry_date) }),
+        el('td', { class: 'num', text: fmtUSD(row.entry_price) }),
+        el('td', { class: 'num', text: fmtUSD(row.last_price) }),
+        el('td', { class: `num ${pctClass(row.unrealised_pct)}`, text: fmtPct(row.unrealised_pct) }),
+        el('td', { class: 'num', text: held }),
+      ]));
+    });
+    table.appendChild(tbody);
+    sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
+  }
+  const pending = p.pending_orders || [];
+  if (pending.length) {
+    const note = el('div', { class: 'sub', style: 'margin-top:1rem' });
+    note.innerHTML = `Queued for next open: ` +
+      pending.map(o => `<span class="ticker-badge">${o.ticker}</span> (${o.sector || 'sector n/a'})`).join(', ');
+    sec.appendChild(note);
+  }
+  return sec;
+}
+
+function renderSectors(d) {
+  const p = d.portfolio || {};
+  const counts = p.sector_counts || {};
+  const cap = d.strategy ? d.strategy.max_positions_per_sector : null;
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Sector exposure' }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'No positions to break down by sector yet.' }));
+    return sec;
+  }
+  const maxScale = Math.max(cap || 1, ...entries.map(e => e[1]));
+  entries.forEach(([name, count]) => {
+    const row = el('div', { class: 'sector-row' });
+    row.appendChild(el('div', { class: 'name', text: name }));
+    const track = el('div', { class: 'sector-track' });
+    track.appendChild(el('div', { class: 'sector-fill', style: `width:${(count / maxScale) * 100}%` }));
+    if (cap) {
+      track.appendChild(el('div', { class: 'sector-cap-mark', style: `left:${(cap / maxScale) * 100}%` }));
+    }
+    row.appendChild(track);
+    row.appendChild(el('div', { class: 'count', text: cap ? `${count} / ${cap}` : String(count) }));
+    sec.appendChild(row);
+  });
+  return sec;
+}
+
+function renderCandidates(d) {
+  const rows = d.top_candidates || [];
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: "Today's screen" }));
+  sec.appendChild(el('div', {
+    class: 'sub',
+    text: `Top ${rows.length} by composite score, as of ${fmtDate(d.meta ? d.meta.data_date : null)}.`
+  }));
+  if (!rows.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'No screen has run yet.' }));
+    return sec;
+  }
+  const blockCols = Object.keys(rows[0]).filter(k => k.startsWith('block_'));
+  const table = el('table');
+  table.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: '#' }), el('th', { text: 'ticker' }), el('th', { text: 'sector' }),
+    el('th', { class: 'num', text: 'composite' }),
+    ...blockCols.map(c => el('th', { class: 'num', text: c.replace('block_', '') })),
+  ])));
+  const tbody = el('tbody');
+  rows.forEach(row => {
+    tbody.appendChild(el('tr', {}, [
+      el('td', { text: row.rank != null ? String(Math.round(row.rank)) : '—' }),
+      el('td', {}, el('span', { class: 'ticker-badge', text: row.ticker })),
+      el('td', { class: 'name-cell', text: row.sector || '—' }),
+      el('td', { class: 'num', text: fmtNum(row.composite, 2) }),
+      ...blockCols.map(c => el('td', { class: 'num', text: fmtNum(row[c], 2) })),
+    ]));
+  });
+  table.appendChild(tbody);
+  sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
+  return sec;
+}
+
+function renderWeights(d) {
+  const weights = d.factor_weights || {};
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Factor weights' }));
+  sec.appendChild(el('div', {
+    class: 'sub',
+    text: d.learning && d.learning.enabled
+      ? `Self-learning is ${d.learning.mode || 'on'}; these adjust monthly within bounds.`
+      : 'Set by hand in config.yml.'
+  }));
+  Object.entries(weights).forEach(([name, w]) => {
+    const row = el('div', { class: 'weight-row' });
+    row.appendChild(el('div', { text: name }));
+    const track = el('div', { class: 'weight-track' });
+    track.appendChild(el('div', { class: 'weight-fill', style: `width:${Math.min(100, w * 100 * 2)}%` }));
+    row.appendChild(track);
+    row.appendChild(el('div', { class: 'pct', text: (w * 100).toFixed(0) + '%' }));
+    sec.appendChild(row);
+  });
+  return sec;
+}
+
+function renderTrades(d) {
+  const rows = d.recent_trades || [];
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Recent closed trades' }));
+  if (!rows.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'No positions have closed yet — the first entries are still inside their holding period.' }));
+    return sec;
+  }
+  const table = el('table');
+  table.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: 'ticker' }), el('th', { text: 'sector' }),
+    el('th', { text: 'entry' }), el('th', { text: 'exit' }),
+    el('th', { class: 'num', text: 'return' }), el('th', { class: 'num', text: 'pnl' }),
+  ])));
+  const tbody = el('tbody');
+  rows.forEach(row => {
+    tbody.appendChild(el('tr', {}, [
+      el('td', {}, el('span', { class: 'ticker-badge', text: row.ticker })),
+      el('td', { class: 'name-cell', text: row.sector || '—' }),
+      el('td', { text: fmtDate(row.entry_date) }),
+      el('td', { text: fmtDate(row.exit_date) }),
+      el('td', { class: `num ${pctClass(row.return_pct)}`, text: fmtPct(row.return_pct) }),
+      el('td', { class: `num ${pctClass(row.pnl)}`, text: fmtUSD(row.pnl) }),
+    ]));
+  });
+  table.appendChild(tbody);
+  sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
+  return sec;
+}
+
+function renderLearning(d) {
+  const rows = (d.learning && d.learning.recent_decisions) || [];
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Learning log' }));
+  if (!rows.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'No monthly tuning run has happened yet — it starts once 40+ trades have closed.' }));
+    return sec;
+  }
+  const table = el('table');
+  table.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: 'date' }), el('th', { text: 'decision' }), el('th', { text: 'reason' }),
+  ])));
+  const tbody = el('tbody');
+  rows.forEach(row => {
+    tbody.appendChild(el('tr', {}, [
+      el('td', { text: fmtDate(row.run_date) }),
+      el('td', { class: 'name-cell', text: row.decision || '—' }),
+      el('td', { class: 'name-cell', text: row.reason || '' }),
+    ]));
+  });
+  table.appendChild(tbody);
+  sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
+  return sec;
+}
+
+function renderFooter(d) {
+  const meta = d.meta || {};
+  return el('footer', {
+    html: `Last run ${meta.run_time || '—'} on data through ${fmtDate(meta.data_date)}. ` +
+          `Fundamentals as of ${fmtDate(meta.fundamentals_asof)}. ` +
+          `Universe ${meta.universe_size ?? '—'} names, ${meta.eligible_count ?? '—'} eligible. ` +
+          `Page generated ${d.generated_at || '—'}. ` +
+          `<a href="https://github.com/Vitoldinijs/sp500-screener" target="_blank" rel="noopener">source on GitHub</a>.`
+  });
+}
+
+async function main() {
+  let d;
+  try {
+    const res = await fetch('data/dashboard.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    d = await res.json();
+  } catch (err) {
+    $('#stateMsg').textContent = 'No data published yet — the first daily run will populate this page.';
+    return;
+  }
+
+  $('#strategyLabel').textContent =
+    `${(d.strategy && d.strategy.name) || 'strategy'} · ${(d.strategy && d.strategy.hold_days) || '?'}d hold`;
+
+  app.innerHTML = '';
+  app.appendChild(renderHero(d));
+  app.appendChild(renderStats(d));
+  app.appendChild(renderEquitySection(d));
+  app.appendChild(renderPositions(d));
+  app.appendChild(renderSectors(d));
+  app.appendChild(renderCandidates(d));
+  app.appendChild(renderWeights(d));
+  app.appendChild(renderTrades(d));
+  app.appendChild(renderLearning(d));
+  app.appendChild(renderFooter(d));
+}
+
+main();
+</script>
+</body>
+</html>
