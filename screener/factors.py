@@ -36,6 +36,27 @@ def rsi(series: pd.Series, window: int = 14) -> float:
     return float(100.0 - (100.0 / (1.0 + rs)))
 
 
+def macd_hist(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> float:
+    """MACD histogram (MACD line minus its own signal line), normalised by price.
+
+    Raw MACD is denominated in price units, so a $900 stock's histogram would
+    dwarf a $20 stock's at the exact same % trend strength — dividing by the
+    last close makes it comparable across the cross-section, which is what
+    the z-score step needs. Requires slow+signal bars for the EMAs to have
+    converged past their initial transient.
+    """
+    s = series.dropna()
+    if len(s) < slow + signal:
+        return np.nan
+    ema_fast = s.ewm(span=fast, adjust=False).mean()
+    ema_slow = s.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    hist = float((macd_line - signal_line).iloc[-1])
+    last = float(s.iloc[-1])
+    return hist / last if last else np.nan
+
+
 def _ret(col: pd.Series, lag: int, skip: int = 0) -> float:
     """Return over `lag` bars ending `skip` bars ago."""
     s = col.dropna()
@@ -106,10 +127,7 @@ def price_factors(
             "above_ma50": (last / ma50 - 1.0) if ma50 and not np.isnan(ma50) else np.nan,
             "above_ma200": (last / ma200 - 1.0) if ma200 and not np.isnan(ma200) else np.nan,
             "rsi14": rsi14,
-            # Prefers a neutral RSI: penalises overbought AND oversold extremes.
-            # Momentum factors already capture trend direction; this keeps us
-            # from paying up for euphoria or catching a falling knife.
-            "rsi_centered": -abs(rsi14 - 50.0) if not np.isnan(rsi14) else np.nan,
+            "macd_hist": macd_hist(col),
             "volatility": vol60,
             "dollar_volume": dvol,
             "dist_52w_high": dist_52w_high,

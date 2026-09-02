@@ -336,18 +336,18 @@ def test_missing_price_data_defers_then_cancels():
 def test_proposed_weights_respect_bounds_and_sum_to_one():
     cfg = _cfg()
     L = cfg.learning
-    current = {"value": 0.20, "quality": 0.18, "growth": 0.12, "momentum": 0.32,
-               "earnings": 0.12, "risk": 0.06}
+    current = {"value": 0.18, "quality": 0.16, "growth": 0.10, "momentum": 0.30,
+               "earnings": 0.12, "risk": 0.06, "technical": 0.08}
 
     for ic in [
         {"value": 0.9, "quality": 0.0, "growth": 0.0, "momentum": 0.0,
-         "earnings": 0.0, "risk": 0.0},   # extreme
+         "earnings": 0.0, "risk": 0.0, "technical": 0.0},   # extreme
         {"value": -0.5, "quality": -0.5, "growth": -0.5, "momentum": -0.5,
-         "earnings": -0.5, "risk": -0.5},  # all bad
+         "earnings": -0.5, "risk": -0.5, "technical": -0.5},  # all bad
         {"value": 0.0, "quality": 0.0, "growth": 0.0, "momentum": 0.0,
-         "earnings": 0.0, "risk": 0.0},   # no signal
+         "earnings": 0.0, "risk": 0.0, "technical": 0.0},   # no signal
         {"value": 0.02, "quality": 0.03, "growth": 0.01, "momentum": 0.05,
-         "earnings": 0.02, "risk": 0.01},  # realistic
+         "earnings": 0.02, "risk": 0.01, "technical": 0.02},  # realistic
     ]:
         w = learn.propose_weights(current, ic, cfg)
         assert abs(sum(w.values()) - 1.0) < 1e-3, f"weights must sum to 1: {w}"

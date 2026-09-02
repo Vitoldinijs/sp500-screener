@@ -44,7 +44,7 @@ GRID_STEP = 5             # evaluate every 5th trading day
 # back into config.yml's `factor_weights` (see Config.save_weights, which
 # REPLACES the whole block). A block present in metric_blocks but missing
 # here would silently vanish from config.yml the first time learning runs.
-BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk")
+BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk", "technical")
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +163,42 @@ def evaluate_weights(snapshots: list[dict], weights: dict, top_n: int = 1) -> di
 # ---------------------------------------------------------------------------
 # weight proposal
 # ---------------------------------------------------------------------------
+def _renorm_with_caps(vals: dict, lo: dict, hi: dict, target_sum: float = 1.0,
+                       max_iter: int = 20) -> dict:
+    """Scale `vals` to sum to `target_sum`, water-filling within [lo, hi].
+
+    A uniform rescale (`v / sum(vals) * target_sum`) ignores the per-block
+    band and can push a block's *effective* step well past what it looks
+    like it moved before the rescale. This instead only ever pushes the
+    remaining budget onto blocks that still have room, iterating until
+    either the budget is placed or every block is pinned to a bound.
+    """
+    vals = dict(vals)
+    for _ in range(max_iter):
+        diff = target_sum - sum(vals.values())
+        if abs(diff) < 1e-9:
+            break
+        free = [k for k, v in vals.items()
+                if not ((diff > 0 and v >= hi[k] - 1e-9) or
+                        (diff < 0 and v <= lo[k] + 1e-9))]
+        if not free:
+            break
+        share = diff / len(free)
+        for k in free:
+            vals[k] = min(hi[k], max(lo[k], vals[k] + share))
+    return vals
+
+
 def propose_weights(current: dict, ic_means: dict, cfg, confidence: dict | None = None) -> dict:
-    """Blend current weights toward IC-implied weights, respecting bounds."""
+    """Blend current weights toward IC-implied weights, respecting bounds.
+
+    Two constraints must hold on the weights this RETURNS, not just on some
+    intermediate step: each stays within [weight_min, weight_max], and none
+    moves more than `max_step_per_month` from `current`. Those per-block
+    step caps are enforced as a band, and only the leftover budget needed to
+    reach sum=1.0 gets water-filled across blocks that still have room —
+    see `_renorm_with_caps`.
+    """
     L = cfg.learning
     wmin, wmax = float(L["weight_min"]), float(L["weight_max"])
     step = float(L["max_step_per_month"])
@@ -179,21 +213,21 @@ def propose_weights(current: dict, ic_means: dict, cfg, confidence: dict | None 
     else:
         target = {b: pos[b] / total for b in BLOCKS}
 
+    cur = {b: float(current.get(b, 0.0)) for b in BLOCKS}
+    lo = {b: max(wmin, cur[b] - step) for b in BLOCKS}
+    hi = {b: min(wmax, cur[b] + step) for b in BLOCKS}
+
     proposed = {}
     for b in BLOCKS:
-        cur = float(current.get(b, 0.0))
         conf = float(confidence.get(b, 1.0))
-        delta = (target[b] - cur) * conf
+        delta = (target[b] - cur[b]) * conf
         delta = max(-step, min(step, delta))
-        proposed[b] = min(wmax, max(wmin, cur + delta))
+        proposed[b] = min(hi[b], max(lo[b], cur[b] + delta))
 
-    # renormalise to 1.0 while respecting the floor
+    proposed = _renorm_with_caps(proposed, lo, hi)
     s = sum(proposed.values())
-    if s > 0:
-        proposed = {b: v / s for b, v in proposed.items()}
-    # a second clamp pass in case renormalisation pushed something out of range
-    proposed = {b: min(wmax, max(wmin, v)) for b, v in proposed.items()}
-    s = sum(proposed.values())
+    if s <= 0:
+        return proposed
     return {b: round(v / s, 4) for b, v in proposed.items()}
 
 
@@ -202,8 +236,8 @@ def _coverage_confidence(ic_frame: pd.DataFrame) -> dict:
 
     Fundamental snapshots only start accumulating when the bot goes live, so
     early on the value/quality/growth/earnings ICs are measured on stale or
-    partly missing data. Momentum and risk are computed purely from prices
-    and are always fully covered, so they get full confidence.
+    partly missing data. Momentum, risk and technical are computed purely
+    from prices and are always fully covered, so they get full confidence.
     """
     conf = {}
     for b in BLOCKS:
