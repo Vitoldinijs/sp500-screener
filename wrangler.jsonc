@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // This is a hand-written static site (docs/index.html + docs/data/*.json),
+  // no framework, no build step. Without this file present, Cloudflare's
+  // automatic project configuration guesses a framework from the repo and
+  // can guess wrong (e.g. it may try `npx cecil build` -> `_site`, which
+  // doesn't exist here). "assets.directory" alone with no "main" deploys
+  // this as an assets-only Worker: no Worker code runs, Cloudflare's edge
+  // serves docs/ directly.
+  "name": "sp500-screener",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "docs"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
