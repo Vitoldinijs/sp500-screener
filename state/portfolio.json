@@ -1,8 +1,8 @@
 {
-  "cash": 7616.7699999999995,
+  "cash": 7139.549999999999,
   "start_capital": 10000.0,
-  "bar_count": 6,
-  "last_run_date": "2026-08-31",
+  "bar_count": 7,
+  "last_run_date": "2026-09-01",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 456.01,
-      "last_value": 490.05,
-      "bars_held": 4,
+      "last_price": 425.0,
+      "last_value": 456.73,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": 0.029106
+      "unrealised_pct": -0.040866
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 958.73,
-      "last_value": 493.36,
-      "bars_held": 3,
+      "last_price": 933.44,
+      "last_value": 480.34,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": 0.035122
+      "unrealised_pct": 0.007805
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1566.7,
-      "last_value": 482.63,
-      "bars_held": 2,
+      "last_price": 1536.87,
+      "last_value": 473.45,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.010638
+      "unrealised_pct": -0.008585
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 450.55,
-      "last_value": 464.6,
-      "bars_held": 1,
+      "last_price": 450.44,
+      "last_value": 464.48,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": -0.025894
+      "unrealised_pct": -0.026145
     },
     {
       "trade_id": 5,
@@ -123,34 +123,59 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 358.92,
-      "last_value": 474.31,
-      "bars_held": 0,
+      "last_price": 361.99,
+      "last_value": 478.36,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": -0.003383
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": 0.005127
+    },
     {
-      "side": "BUY",
+      "trade_id": 6,
       "ticker": "MPC",
       "sector": "Energy",
       "name": "Marathon Petroleum",
-      "notional": 477.22,
+      "shares": 1.252643,
+      "entry_date": "2026-09-01",
+      "entry_price": 380.9704,
+      "cost_basis": 477.22,
+      "entry_bar": 7,
       "entry_score": 0.9280120270881818,
-      "rank": 6,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.6975868904074245,
         "quality": -0.388014448215243,
         "growth": 2.535380266835807,
         "momentum": 1.451441773314647
       },
-      "signal_close": 373.32000732421875,
+      "entry_rank": 6,
+      "av_verdict": "confirmed",
+      "last_price": 383.0,
+      "last_value": 479.76,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.005322
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "OXY",
+      "sector": "Energy",
+      "name": "Occidental Petroleum",
+      "notional": 474.89,
+      "entry_score": 0.8840484909760108,
+      "rank": 7,
+      "blocks": {
+        "value": 0.6404730546000377,
+        "quality": 0.6217370841682853,
+        "growth": 3.301463091132311,
+        "momentum": 0.13750946628027205
+      },
+      "signal_close": 60.95000076293945,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 6,
+  "next_trade_id": 7,
   "version": 2
 }
