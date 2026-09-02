@@ -39,7 +39,12 @@ from .data import fundamentals as fund_mod
 
 FWD_HORIZON = 21          # trading days, matches the holding period
 GRID_STEP = 5             # evaluate every 5th trading day
-BLOCKS = ("value", "quality", "growth", "momentum")
+# Must stay in sync with config.yml's `metric_blocks` keys — this list drives
+# both the walk-forward IC evaluation below AND what `propose_weights` writes
+# back into config.yml's `factor_weights` (see Config.save_weights, which
+# REPLACES the whole block). A block present in metric_blocks but missing
+# here would silently vanish from config.yml the first time learning runs.
+BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk")
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +201,9 @@ def _coverage_confidence(ic_frame: pd.DataFrame) -> dict:
     """Shrink adjustments for blocks whose historical coverage is thin.
 
     Fundamental snapshots only start accumulating when the bot goes live, so
-    early on the value/quality/growth ICs are measured on stale or partly
-    missing data. Momentum is computed purely from prices and is always fully
-    covered, so it gets full confidence.
+    early on the value/quality/growth/earnings ICs are measured on stale or
+    partly missing data. Momentum and risk are computed purely from prices
+    and are always fully covered, so they get full confidence.
     """
     conf = {}
     for b in BLOCKS:
@@ -262,13 +267,14 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
     champ_val = evaluate_weights(val_snaps, champion)
     chall_val = evaluate_weights(val_snaps, challenger)
 
+    ic_cols = {
+        f"ic_{b}": (round(ic_means[b], 5) if ic_means.get(b) == ic_means.get(b) else "")
+        for b in BLOCKS
+    }
     rec.update({
         "n_trades": n_trades,
         "eval_dates": len(snapshots),
-        "ic_value": round(ic_means.get("value", np.nan), 5) if ic_means.get("value") == ic_means.get("value") else "",
-        "ic_quality": round(ic_means.get("quality", np.nan), 5) if ic_means.get("quality") == ic_means.get("quality") else "",
-        "ic_growth": round(ic_means.get("growth", np.nan), 5) if ic_means.get("growth") == ic_means.get("growth") else "",
-        "ic_momentum": round(ic_means.get("momentum", np.nan), 5) if ic_means.get("momentum") == ic_means.get("momentum") else "",
+        **ic_cols,
         "champion_val_mean": champ_val["mean"],
         "challenger_val_mean": chall_val["mean"],
         "champion_val_sharpe": champ_val["sharpe"],

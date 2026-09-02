@@ -9,7 +9,13 @@ which gives an approximate point-in-time view that improves as history builds.
 Fields (all optional; missing => NaN, handled by the scorer):
   pe_ratio, pb_ratio, ps_ratio, ev_ebitda, fcf_yield,
   roe, gross_margin, net_margin, net_debt_ebitda,
-  revenue_growth, earnings_growth, market_cap
+  revenue_growth, earnings_growth, market_cap,
+  last_earnings_date, earnings_surprise_pct
+
+`last_earnings_date` / `earnings_surprise_pct` feed the post-earnings-
+announcement-drift (PEAD) signal in factors.py: the most recent *reported*
+(not estimated) EPS surprise, and the date it was reported on. Scored only
+while fresh — see the staleness gate in `factors.build_metrics`.
 """
 from __future__ import annotations
 
@@ -23,6 +29,7 @@ FIELDS = [
     "pe_ratio", "pb_ratio", "ps_ratio", "ev_ebitda", "fcf_yield",
     "roe", "gross_margin", "net_margin", "net_debt_ebitda",
     "revenue_growth", "earnings_growth", "market_cap",
+    "last_earnings_date", "earnings_surprise_pct",
 ]
 SCHEMA = ["asof", "ticker", *FIELDS]
 
@@ -66,6 +73,35 @@ def _extract(info: dict) -> dict:
     }
 
 
+def _extract_earnings(tk) -> dict:
+    """Most recent *reported* EPS surprise from a yfinance Ticker object.
+
+    `get_earnings_dates()` returns both past reports and future estimates in
+    one table; future rows have no "Reported EPS" yet. We want the newest
+    row that has actually happened, so we filter to reported rows first,
+    then take the latest — never the newest row from the raw table.
+    """
+    try:
+        df = tk.get_earnings_dates(limit=8)
+    except Exception:  # noqa: BLE001
+        return {"last_earnings_date": np.nan, "earnings_surprise_pct": np.nan}
+    if df is None or df.empty:
+        return {"last_earnings_date": np.nan, "earnings_surprise_pct": np.nan}
+
+    reported = df[df.get("Reported EPS").notna()] if "Reported EPS" in df.columns else df.iloc[0:0]
+    if reported.empty:
+        return {"last_earnings_date": np.nan, "earnings_surprise_pct": np.nan}
+
+    row = reported.sort_index().iloc[-1]
+    idx = reported.sort_index().index[-1]
+    when = idx.tz_localize(None) if getattr(idx, "tzinfo", None) else idx
+    surprise = row.get("Surprise(%)")
+    return {
+        "last_earnings_date": pd.Timestamp(when).date().isoformat(),
+        "earnings_surprise_pct": float(surprise) if pd.notna(surprise) else np.nan,
+    }
+
+
 def fetch_fundamentals(tickers: list[str], asof: date | None = None) -> pd.DataFrame:
     """Pull current fundamentals for each ticker (weekly job)."""
     import yfinance as yf
@@ -74,12 +110,19 @@ def fetch_fundamentals(tickers: list[str], asof: date | None = None) -> pd.DataF
     rows = []
     for t in tickers:
         rec = {"asof": asof.isoformat(), "ticker": t, **{f: np.nan for f in FIELDS}}
+        tk = yf.Ticker(t)
         try:
-            info = yf.Ticker(t).info
+            info = tk.info
             if info:
                 rec.update(_extract(info))
         except Exception as exc:  # noqa: BLE001
             print(f"[fundamentals] {t}: {exc}")
+        # Separate try/except: a scrape failure here must not cost us the
+        # ratios we already got from `.info` above.
+        try:
+            rec.update(_extract_earnings(tk))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[fundamentals] {t} earnings: {exc}")
         rows.append(rec)
     return pd.DataFrame(rows, columns=SCHEMA)
 

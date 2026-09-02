@@ -118,9 +118,16 @@ def make_fundamentals(
             "revenue_growth": float(np.clip(0.07 + 0.04 * signal + rng.normal(0, 0.09), -0.4, 0.9)),
             "earnings_growth": float(np.clip(0.10 + 0.05 * signal + rng.normal(0, 0.18), -0.8, 1.5)),
             "market_cap": mc,
+            # Earnings surprise correlated with the same hidden alpha, dated
+            # recently relative to `asof` so the PEAD staleness gate in
+            # factors.py doesn't blank it out during tests.
+            "last_earnings_date": (
+                pd.Timestamp(asof) - pd.Timedelta(days=int(rng.integers(1, 80)))
+            ).date().isoformat(),
+            "earnings_surprise_pct": float(np.clip(2.0 + 6.0 * signal + rng.normal(0, 8.0), -40, 60)),
         }
         # Punch a few holes, like a real provider would.
-        for f in ("pe_ratio", "ev_ebitda", "earnings_growth", "fcf_yield"):
+        for f in ("pe_ratio", "ev_ebitda", "earnings_growth", "fcf_yield", "earnings_surprise_pct"):
             if rng.random() < missing_rate:
                 rec[f] = np.nan
         rows.append(rec)

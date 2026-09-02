@@ -33,7 +33,9 @@ permissions:
 jobs:
   fundamentals:
     runs-on: ubuntu-latest
-    timeout-minutes: 90         # ~500 sequential .info calls is slow by nature
+    timeout-minutes: 150        # ~500 sequential .info + earnings-date scrape
+                                 # calls is slow by nature; the scrape roughly
+                                 # doubles the per-ticker request count
 
     steps:
       - uses: actions/checkout@v4
@@ -55,11 +57,14 @@ jobs:
           python -m screener weekly \
             ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
 
+      - name: Export dashboard data
+        run: python scripts/export_dashboard_data.py
+
       - name: Commit the new snapshot
         run: |
           git config user.name  "screener-bot"
           git config user.email "screener-bot@users.noreply.github.com"
-          git add -A state
+          git add -A state docs/data
           if git diff --staged --quiet; then
             echo "no new fundamentals data"
             exit 0

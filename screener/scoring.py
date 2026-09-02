@@ -82,11 +82,17 @@ def apply_filters(metrics: pd.DataFrame, cfg) -> pd.DataFrame:
         fail(col("dollar_volume") < min_dvol, "illiquid")
     if "market_cap" in m:
         fail(col("market_cap") < min_mcap, "market cap too small")
+    if "net_debt_ebitda" in m:
+        max_ndte = _num(f.get("max_net_debt_ebitda"), 4.0)
+        # NaN (no meaningful EBITDA to compare against — common for banks,
+        # insurers, REITs) compares as False here, so it passes rather than
+        # being penalised for a metric that doesn't apply to it.
+        fail(col("net_debt_ebitda") > max_ndte, f"leverage > {max_ndte:g}x EBITDA")
 
     # Fundamental coverage: count how many of the configured fundamental
     # metrics are missing for each name.
     fund_metrics = [
-        c for block in ("value", "quality", "growth")
+        c for block in ("value", "quality", "growth", "earnings")
         for c in cfg["metric_blocks"][block]
         if c in m.columns
     ]

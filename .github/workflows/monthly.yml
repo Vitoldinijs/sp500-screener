@@ -59,11 +59,15 @@ jobs:
         run: |
           python -m screener monthly ${{ inputs.dry_run && '--dry-run' || '' }}
 
+      - name: Export dashboard data
+        # Weights may have just changed; keep the dashboard's chart in sync.
+        run: python scripts/export_dashboard_data.py
+
       - name: Commit the decision
         run: |
           git config user.name  "screener-bot"
           git config user.email "screener-bot@users.noreply.github.com"
-          git add -A state config.yml
+          git add -A state config.yml docs/data
           if git diff --staged --quiet; then
             echo "weights unchanged"
             exit 0

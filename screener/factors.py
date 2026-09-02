@@ -79,6 +79,13 @@ def price_factors(
         vol60 = (
             float(rets.tail(60).std() * np.sqrt(252)) if len(rets) >= 60 else np.nan
         )
+        # Distance below the 52-week high (George & Hwang, 2004): proximity
+        # to the trailing high is a persistent, momentum-adjacent predictor
+        # in its own right. Requires near a full year of history, same bar
+        # as ma200, so we don't call a 3-month-old listing's own high "the"
+        # 52-week high.
+        high52 = float(col.tail(H_12M).max()) if len(col) >= 200 else np.nan
+        dist_52w_high = (last / high52 - 1.0) if high52 and not np.isnan(high52) else np.nan
 
         dvol = np.nan
         if volume is not None and ticker in getattr(volume, "columns", []):
@@ -105,6 +112,7 @@ def price_factors(
             "rsi_centered": -abs(rsi14 - 50.0) if not np.isnan(rsi14) else np.nan,
             "volatility": vol60,
             "dollar_volume": dvol,
+            "dist_52w_high": dist_52w_high,
         }
 
     out = pd.DataFrame.from_dict(rows, orient="index")
@@ -153,6 +161,22 @@ def build_metrics(
         merged = pf.join(fund, how="left")
     else:
         merged = pf
+
+    # --- PEAD staleness gate -------------------------------------------
+    # earnings_surprise_pct is only a meaningful signal in the weeks right
+    # after a report; a surprise from two quarters ago is stale news the
+    # market has long since priced in. Blank it out once it ages past
+    # ~one quarter, same point-in-time discipline as everything else here
+    # (days_since_earnings < 0 would mean the "report" is in our future —
+    # can't happen with real data, but we guard against it anyway).
+    if "last_earnings_date" in merged.columns:
+        ref_date = pd.Timestamp(asof) if asof is not None else pd.Timestamp.today()
+        led = pd.to_datetime(merged["last_earnings_date"], errors="coerce")
+        days_since = (ref_date - led).dt.days
+        merged["days_since_earnings"] = days_since
+        if "earnings_surprise_pct" in merged.columns:
+            stale = days_since.isna() | (days_since > 90) | (days_since < 0)
+            merged.loc[stale, "earnings_surprise_pct"] = np.nan
 
     uni = universe.set_index("ticker")
     for col in ("sector", "name"):

@@ -42,6 +42,13 @@ jobs:
         # accounting identity holds. The full 300-day run is a local exercise.
         run: python scripts/simulate.py --days 40
 
+      - name: Dashboard export sanity check
+        # Exercises export_dashboard_data.py against whatever state is
+        # committed on this branch, writing to a scratch path so it can't
+        # dirty the checkout. Catches schema drift between the pipeline's
+        # CSVs/portfolio.json and what docs/index.html expects to read.
+        run: python scripts/export_dashboard_data.py --out /tmp/dashboard.json
+
       - name: Config sanity check
         # Catches the YAML gotcha where `5.0e6` parses as a string, plus
         # weights that no longer sum to 1 after a bad manual edit.

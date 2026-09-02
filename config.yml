@@ -24,15 +24,25 @@ filters:
   min_market_cap: 2000000000    # small-cap floor ($2B)
   min_history_days: 200         # need enough bars for MA200 / momentum
   max_missing_fundamentals: 3   # skip names missing too many ratios
+  max_net_debt_ebitda: 4.0      # leverage cap; NaN (e.g. banks/REITs w/o a
+                                 # meaningful EBITDA) passes through, only a
+                                 # name that REPORTS >4x is excluded
 
 # ---- Factor blocks ---------------------------------------------------------
 # Composite score = sum(block_weight * block_z). Block z = mean of its
 # winsorized, cross-sectional z-scored metrics (sign-adjusted so higher=better).
+# value/quality/growth are slow-moving, multi-quarter signals trimmed down to
+# make room for two horizon-matched additions below (both validated in the
+# academic literature specifically at the 1-3 month horizon this bot trades):
+#   earnings  -> post-earnings-announcement drift (PEAD)
+#   risk      -> low-volatility tilt (defensive, dampens ladder-wide drawdowns)
 factor_weights:
-  value: 0.30
-  quality: 0.25
-  growth: 0.15
-  momentum: 0.30
+  value: 0.20
+  quality: 0.18
+  growth: 0.12
+  momentum: 0.32
+  earnings: 0.12
+  risk: 0.06
 
 # Per-metric direction: +1 means higher raw value is better, -1 means lower.
 metric_direction:
@@ -46,7 +56,9 @@ metric_direction:
   roe: 1
   gross_margin: 1
   net_margin: 1
-  net_debt_ebitda: -1
+  # net_debt_ebitda is no longer scored here — it moved to filters.
+  # Leverage is a downside-risk gate, not something that should earn a name
+  # extra composite score for being conservative.
   # growth
   revenue_growth: 1
   earnings_growth: 1
@@ -55,13 +67,21 @@ metric_direction:
   mom_6m: 1
   mom_12m_1m: 1        # 12-month return skipping the most recent month
   above_ma200: 1
-  rsi_centered: 1      # -|RSI-50|, penalises extremes (overbought/oversold)
+  above_ma50: 1         # faster trend confirmation, complements ma200
+  rsi_centered: 1        # -|RSI-50|, penalises extremes (overbought/oversold)
+  dist_52w_high: 1       # George & Hwang (2004): proximity to 52w high
+  # earnings (PEAD)
+  earnings_surprise_pct: 1   # gated to the last ~quarter, see factors.py
+  # risk
+  volatility: -1          # lower realised vol scores better (low-vol anomaly)
 
 metric_blocks:
   value: [pe_ratio, pb_ratio, ev_ebitda, ps_ratio, fcf_yield]
-  quality: [roe, gross_margin, net_margin, net_debt_ebitda]
+  quality: [roe, gross_margin, net_margin]
   growth: [revenue_growth, earnings_growth]
-  momentum: [mom_3m, mom_6m, mom_12m_1m, above_ma200, rsi_centered]
+  momentum: [mom_3m, mom_6m, mom_12m_1m, above_ma200, above_ma50, rsi_centered, dist_52w_high]
+  earnings: [earnings_surprise_pct]
+  risk: [volatility]
 
 winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
@@ -104,3 +124,4 @@ paths:
   av_usage: "state/cache/av_usage.json"           # API quota bookkeeping
   excel_report: "Portfolio.xlsx"                  # committed at repo root
   universe_csv: "screener/data/sp500.csv"         # fallback constituent list
+  dashboard_json: "docs/data/dashboard.json"      # committed: feeds docs/ site

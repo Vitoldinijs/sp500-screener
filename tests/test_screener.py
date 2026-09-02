@@ -143,7 +143,7 @@ def test_composite_renormalises_over_missing_blocks():
     # blocks_used must reflect the missing growth block for the doctored names
     doctored = [t for t in fund["ticker"].iloc[:5] if t in pool.index]
     if doctored:
-        assert pool.loc[doctored, "blocks_used"].max() <= 4
+        assert pool.loc[doctored, "blocks_used"].max() <= len(cfg["metric_blocks"]) - 1
 
 
 def test_scoring_finds_real_signal():
@@ -336,13 +336,18 @@ def test_missing_price_data_defers_then_cancels():
 def test_proposed_weights_respect_bounds_and_sum_to_one():
     cfg = _cfg()
     L = cfg.learning
-    current = {"value": 0.30, "quality": 0.25, "growth": 0.15, "momentum": 0.30}
+    current = {"value": 0.20, "quality": 0.18, "growth": 0.12, "momentum": 0.32,
+               "earnings": 0.12, "risk": 0.06}
 
     for ic in [
-        {"value": 0.9, "quality": 0.0, "growth": 0.0, "momentum": 0.0},   # extreme
-        {"value": -0.5, "quality": -0.5, "growth": -0.5, "momentum": -0.5},  # all bad
-        {"value": 0.0, "quality": 0.0, "growth": 0.0, "momentum": 0.0},   # no signal
-        {"value": 0.02, "quality": 0.03, "growth": 0.01, "momentum": 0.05},  # realistic
+        {"value": 0.9, "quality": 0.0, "growth": 0.0, "momentum": 0.0,
+         "earnings": 0.0, "risk": 0.0},   # extreme
+        {"value": -0.5, "quality": -0.5, "growth": -0.5, "momentum": -0.5,
+         "earnings": -0.5, "risk": -0.5},  # all bad
+        {"value": 0.0, "quality": 0.0, "growth": 0.0, "momentum": 0.0,
+         "earnings": 0.0, "risk": 0.0},   # no signal
+        {"value": 0.02, "quality": 0.03, "growth": 0.01, "momentum": 0.05,
+         "earnings": 0.02, "risk": 0.01},  # realistic
     ]:
         w = learn.propose_weights(current, ic, cfg)
         assert abs(sum(w.values()) - 1.0) < 1e-3, f"weights must sum to 1: {w}"
