@@ -1,8 +1,8 @@
 {
   "cash": 7139.549999999999,
   "start_capital": 10000.0,
-  "bar_count": 8,
-  "last_run_date": "2026-09-02",
+  "bar_count": 9,
+  "last_run_date": "2026-09-03",
   "positions": [
     {
       "trade_id": 1,
@@ -25,8 +25,8 @@
       "av_verdict": "confirmed",
       "last_price": 425.0,
       "last_value": 456.73,
-      "bars_held": 6,
-      "stale_days": 1,
+      "bars_held": 7,
+      "stale_days": 2,
       "unrealised_pct": -0.040866
     },
     {
@@ -50,8 +50,8 @@
       "av_verdict": "confirmed",
       "last_price": 933.44,
       "last_value": 480.34,
-      "bars_held": 5,
-      "stale_days": 1,
+      "bars_held": 6,
+      "stale_days": 2,
       "unrealised_pct": 0.007805
     },
     {
@@ -75,8 +75,8 @@
       "av_verdict": "confirmed",
       "last_price": 1536.87,
       "last_value": 473.45,
-      "bars_held": 4,
-      "stale_days": 1,
+      "bars_held": 5,
+      "stale_days": 2,
       "unrealised_pct": -0.008585
     },
     {
@@ -100,8 +100,8 @@
       "av_verdict": "confirmed",
       "last_price": 450.44,
       "last_value": 464.48,
-      "bars_held": 3,
-      "stale_days": 1,
+      "bars_held": 4,
+      "stale_days": 2,
       "unrealised_pct": -0.026145
     },
     {
@@ -125,8 +125,8 @@
       "av_verdict": "confirmed",
       "last_price": 361.99,
       "last_value": 478.36,
-      "bars_held": 2,
-      "stale_days": 1,
+      "bars_held": 3,
+      "stale_days": 2,
       "unrealised_pct": 0.005127
     },
     {
@@ -150,8 +150,8 @@
       "av_verdict": "confirmed",
       "last_price": 383.0,
       "last_value": 479.76,
-      "bars_held": 1,
-      "stale_days": 1,
+      "bars_held": 2,
+      "stale_days": 2,
       "unrealised_pct": 0.005322
     }
   ],
@@ -174,7 +174,7 @@
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score",
-      "retries": 1
+      "retries": 2
     },
     {
       "side": "BUY",
@@ -194,6 +194,29 @@
         "technical": -0.6941056014711857
       },
       "signal_close": 252.02000427246094,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score",
+      "retries": 1
+    },
+    {
+      "side": "BUY",
+      "ticker": "APA",
+      "sector": "Energy",
+      "name": "APA Corporation",
+      "notional": 474.89,
+      "entry_score": 0.7019116395441239,
+      "rank": 8,
+      "blocks": {
+        "value": 1.1807755734243934,
+        "quality": 0.5628017336720434,
+        "growth": -0.28266615825179225,
+        "momentum": 1.3513128713600713,
+        "earnings": null,
+        "risk": -0.345123101031329,
+        "technical": -0.5165687165756384
+      },
+      "signal_close": 44.70000076293945,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
