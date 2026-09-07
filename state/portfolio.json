@@ -1,8 +1,8 @@
 {
-  "cash": 7139.549999999999,
+  "cash": 5714.879999999998,
   "start_capital": 10000.0,
-  "bar_count": 9,
-  "last_run_date": "2026-09-03",
+  "bar_count": 10,
+  "last_run_date": "2026-09-04",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 425.0,
-      "last_value": 456.73,
-      "bars_held": 7,
-      "stale_days": 2,
-      "unrealised_pct": -0.040866
+      "last_price": 524.14,
+      "last_value": 563.27,
+      "bars_held": 8,
+      "stale_days": 0,
+      "unrealised_pct": 0.182868
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 933.44,
-      "last_value": 480.34,
-      "bars_held": 6,
-      "stale_days": 2,
-      "unrealised_pct": 0.007805
+      "last_price": 1016.59,
+      "last_value": 523.13,
+      "bars_held": 7,
+      "stale_days": 0,
+      "unrealised_pct": 0.097583
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1536.87,
-      "last_value": 473.45,
-      "bars_held": 5,
-      "stale_days": 2,
-      "unrealised_pct": -0.008585
+      "last_price": 1740.0,
+      "last_value": 536.02,
+      "bars_held": 6,
+      "stale_days": 0,
+      "unrealised_pct": 0.122437
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 450.44,
-      "last_value": 464.48,
-      "bars_held": 4,
-      "stale_days": 2,
-      "unrealised_pct": -0.026145
+      "last_price": 467.46,
+      "last_value": 482.03,
+      "bars_held": 5,
+      "stale_days": 0,
+      "unrealised_pct": 0.010651
     },
     {
       "trade_id": 5,
@@ -123,11 +123,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 361.99,
-      "last_value": 478.36,
-      "bars_held": 3,
-      "stale_days": 2,
-      "unrealised_pct": 0.005127
+      "last_price": 370.72,
+      "last_value": 489.9,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": 0.029375
     },
     {
       "trade_id": 6,
@@ -148,43 +148,49 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 383.0,
-      "last_value": 479.76,
-      "bars_held": 2,
-      "stale_days": 2,
-      "unrealised_pct": 0.005322
-    }
-  ],
-  "pending_orders": [
+      "last_price": 388.9,
+      "last_value": 487.15,
+      "bars_held": 3,
+      "stale_days": 0,
+      "unrealised_pct": 0.020808
+    },
     {
-      "side": "BUY",
+      "trade_id": 7,
       "ticker": "OXY",
       "sector": "Energy",
       "name": "Occidental Petroleum",
-      "notional": 474.89,
+      "shares": 7.895088,
+      "entry_date": "2026-09-04",
+      "entry_price": 60.1501,
+      "cost_basis": 474.89,
+      "entry_bar": 10,
       "entry_score": 0.8840484909760108,
-      "rank": 7,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.6404730546000377,
         "quality": 0.6217370841682853,
         "growth": 3.301463091132311,
         "momentum": 0.13750946628027205
       },
-      "signal_close": 60.95000076293945,
+      "entry_rank": 7,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 2
+      "last_price": 60.04,
+      "last_value": 474.02,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.001832
     },
     {
-      "side": "BUY",
+      "trade_id": 8,
       "ticker": "PSX",
       "sector": "Energy",
       "name": "Phillips 66",
-      "notional": 474.89,
+      "shares": 1.885188,
+      "entry_date": "2026-09-04",
+      "entry_price": 251.9059,
+      "cost_basis": 474.89,
+      "entry_bar": 10,
       "entry_score": 0.8298272742812407,
-      "rank": 5,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.5236285305189845,
         "quality": -0.7870784679473629,
         "growth": 2.3538627483134302,
@@ -193,21 +199,26 @@
         "risk": 0.3717639462908604,
         "technical": -0.6941056014711857
       },
-      "signal_close": 252.02000427246094,
+      "entry_rank": 5,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 1
+      "last_price": 255.09,
+      "last_value": 480.89,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.012635
     },
     {
-      "side": "BUY",
+      "trade_id": 9,
       "ticker": "APA",
       "sector": "Energy",
       "name": "APA Corporation",
-      "notional": 474.89,
+      "shares": 10.86659,
+      "entry_date": "2026-09-04",
+      "entry_price": 43.7018,
+      "cost_basis": 474.89,
+      "entry_bar": 10,
       "entry_score": 0.7019116395441239,
-      "rank": 8,
-      "blocks": {
+      "entry_blocks": {
         "value": 1.1807755734243934,
         "quality": 0.5628017336720434,
         "growth": -0.28266615825179225,
@@ -216,12 +227,39 @@
         "risk": -0.345123101031329,
         "technical": -0.5165687165756384
       },
-      "signal_close": 44.70000076293945,
+      "entry_rank": 8,
+      "av_verdict": "confirmed",
+      "last_price": 42.77,
+      "last_value": 464.76,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.021331
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "NVDA",
+      "sector": "Information Technology",
+      "name": "Nvidia",
+      "notional": 486.48,
+      "entry_score": 0.6809721702367264,
+      "rank": 8,
+      "blocks": {
+        "value": -1.1822094995409358,
+        "quality": 2.3712459108370925,
+        "growth": 2.4369032832591606,
+        "momentum": 0.6802952656308272,
+        "earnings": null,
+        "risk": -0.19603010003779728,
+        "technical": -0.042040350264295534
+      },
+      "signal_close": 230.36000061035156,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 7,
+  "next_trade_id": 10,
   "version": 2
 }
