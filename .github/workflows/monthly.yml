@@ -48,6 +48,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Restore the price cache
+        # Same reasoning as daily.yml: this job re-pulls the full price
+        # history to reconstruct historical scores for the IC walk-forward,
+        # so it benefits from the same cross-run cache just as much.
+        uses: actions/cache@v4
+        with:
+          path: state/cache/prices.csv.gz
+          key: price-cache-${{ github.run_id }}
+          restore-keys: |
+            price-cache-
+
       - name: Re-run the test suite before touching anything
         # If the code is broken, the last thing we want is to also rewrite the
         # weights based on it.

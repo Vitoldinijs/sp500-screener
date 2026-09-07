@@ -49,6 +49,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Restore the price cache
+        # state/cache/prices.csv.gz is gitignored on purpose (committing it
+        # would grow the repo by megabytes a day) — but that means a plain
+        # checkout starts every run with an EMPTY cache, so any provider
+        # hiccup that day just drops those tickers with nothing to fall
+        # back on. actions/cache persists it between runs without ever
+        # touching git history. Keyed by date so it's refreshed daily; the
+        # restore-keys fallback still finds yesterday's cache on a cache
+        # miss, which is what actually protects a bad day.
+        uses: actions/cache@v4
+        with:
+          path: state/cache/prices.csv.gz
+          key: price-cache-${{ github.run_id }}
+          restore-keys: |
+            price-cache-
+
       - name: Run the daily job
         env:
           # Never hardcode this. Repo -> Settings -> Secrets and variables ->

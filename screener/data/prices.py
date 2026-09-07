@@ -25,7 +25,13 @@ import pandas as pd
 
 COLUMNS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 CHUNK = 100          # tickers per yfinance batch call
-STOOQ_MAX = 40       # cap per-ticker fallback work so a run can't hang
+STOOQ_MAX = 200      # cap per-ticker fallback work so a run can't hang.
+                     # This is a genuine safety valve, not a normal-case
+                     # limit — the normal-case number of missing tickers on
+                     # any given day should be near zero. If it's regularly
+                     # anywhere close to this cap, that's a sign something
+                     # upstream (rate limiting, a bad chunk) needs
+                     # attention, not a reason to raise the cap further.
 
 
 # --------------------------------------------------------------------------
@@ -37,20 +43,35 @@ def _download_yfinance(tickers: list[str], start: date, end: date) -> pd.DataFra
     frames = []
     for i in range(0, len(tickers), CHUNK):
         chunk = tickers[i : i + CHUNK]
-        try:
-            raw = yf.download(
-                chunk,
-                start=start.isoformat(),
-                end=(end + timedelta(days=1)).isoformat(),
-                auto_adjust=True,
-                group_by="ticker",
-                threads=True,
-                progress=False,
-                timeout=60,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"[prices] yfinance chunk {i//CHUNK} failed: {exc}")
-            continue
+        raw = None
+        # A transient blip (CI runner rate-limited, one slow response) used
+        # to drop the whole 100-ticker chunk for the day with zero retry —
+        # exactly the kind of failure that leaves a handful of names with no
+        # price at all on an otherwise-fine day. Three tries with backoff
+        # costs at most ~15s when things are fine (no retry needed) and
+        # turns most one-off blips into a non-event instead of a dropped
+        # chunk.
+        for attempt in range(3):
+            try:
+                raw = yf.download(
+                    chunk,
+                    start=start.isoformat(),
+                    end=(end + timedelta(days=1)).isoformat(),
+                    auto_adjust=True,
+                    group_by="ticker",
+                    threads=True,
+                    progress=False,
+                    timeout=60,
+                )
+                break
+            except Exception as exc:  # noqa: BLE001
+                wait = 3 * (attempt + 1)
+                print(f"[prices] yfinance chunk {i//CHUNK} attempt {attempt+1} "
+                      f"failed ({exc}); retrying in {wait}s" if attempt < 2
+                      else f"[prices] yfinance chunk {i//CHUNK} failed after "
+                           f"3 attempts ({exc}); giving up on this chunk")
+                if attempt < 2:
+                    time.sleep(wait)
         if raw is None or raw.empty:
             continue
         frames.append(_tidy_yf(raw, chunk))
@@ -194,6 +215,12 @@ def get_prices(
         extra = normalise(_download_stooq(missing, start, end))
         if not extra.empty:
             fresh = pd.concat([fresh, extra], ignore_index=True)
+        still_missing = set(missing) - (set(extra["ticker"].unique()) if not extra.empty else set())
+        if still_missing:
+            sample = ", ".join(sorted(still_missing)[:15])
+            more = f" (+{len(still_missing) - 15} more)" if len(still_missing) > 15 else ""
+            print(f"[prices] {len(still_missing)} tickers still missing after "
+                  f"both providers today: {sample}{more}")
 
     if fresh.empty:
         print("[prices] all providers failed; falling back to cache")
