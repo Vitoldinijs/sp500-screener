@@ -208,14 +208,26 @@ def get_prices(
     elif provider == "stooq":
         fresh = normalise(_download_stooq(tickers, start, end))
 
-    got = set(fresh["ticker"].unique()) if not fresh.empty else set()
-    missing = [t for t in tickers if t not in got]
+    # A ticker with 400+ days of clean history but a missing/NaN bar for
+    # *today* specifically used to slip through here: `got` only asked "does
+    # this ticker have a row ANYWHERE in the whole lookback window", which a
+    # liquid, actively-traded name will always pass even if Yahoo just
+    # hasn't finalised today's close yet at the time this job runs. That's
+    # exactly the case that breaks fill_pending (which needs today's bar,
+    # not history) — so "missing" has to mean "missing for the date we
+    # actually need", not "missing everywhere".
+    end_ts = pd.Timestamp(end)
+    have_today = set(fresh.loc[fresh["date"] == end_ts, "ticker"]) if not fresh.empty else set()
+    missing = [t for t in tickers if t not in have_today]
     if missing and provider == "yfinance":
         print(f"[prices] {len(missing)} tickers missing; trying Stooq fallback")
         extra = normalise(_download_stooq(missing, start, end))
         if not extra.empty:
             fresh = pd.concat([fresh, extra], ignore_index=True)
-        still_missing = set(missing) - (set(extra["ticker"].unique()) if not extra.empty else set())
+        # Same end-date-specific check as above — Stooq having *a* row for
+        # a ticker isn't the bar we actually need if it's not dated today.
+        extra_today = set(extra.loc[extra["date"] == end_ts, "ticker"]) if not extra.empty else set()
+        still_missing = set(missing) - extra_today
         if still_missing:
             sample = ", ".join(sorted(still_missing)[:15])
             more = f" (+{len(still_missing) - 15} more)" if len(still_missing) > 15 else ""

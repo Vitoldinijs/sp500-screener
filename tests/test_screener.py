@@ -83,6 +83,53 @@ def test_price_factors_respect_asof():
         assert abs(full.loc[t, "last_close"] - close.loc[cut, t]) < 1e-9
 
 
+def test_missing_todays_bar_triggers_stooq_fallback():
+    """A liquid ticker with clean history but no bar for *today* specifically
+    must still trigger the Stooq fallback.
+
+    Regression test for a real bug: "missing" used to mean "has zero rows
+    anywhere in the ~420-day lookback", which a name with 400+ good days and
+    a merely-not-yet-published latest close will never satisfy — so the
+    fallback silently never fired for exactly the case that matters most
+    (today's bar, which is the one fill_pending actually needs).
+    """
+    end = date(2026, 9, 8)
+    all_dates = pd.date_range(end - pd.Timedelta(days=5), end, freq="D")
+
+    def fake_yf(tickers, start, end_):
+        rows = []
+        for t in tickers:
+            for d in all_dates:
+                if t == "AAA" and d == pd.Timestamp(end):
+                    continue  # AAA's *today* bar "isn't published yet"
+                rows.append({"date": d, "ticker": t, "open": 10.0, "high": 10.0,
+                             "low": 10.0, "close": 10.0, "volume": 1000})
+        return pd.DataFrame(rows)
+
+    def fake_stooq(tickers, start, end_):
+        return pd.DataFrame([
+            {"date": pd.Timestamp(end), "ticker": t, "open": 11.0, "high": 11.0,
+             "low": 11.0, "close": 11.0, "volume": 500}
+            for t in tickers
+        ])
+
+    orig_yf, orig_stooq = price_mod._download_yfinance, price_mod._download_stooq
+    price_mod._download_yfinance, price_mod._download_stooq = fake_yf, fake_stooq
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            df = price_mod.get_prices(
+                ["AAA", "BBB"], Path(td) / "prices.csv.gz",
+                lookback_days=5, provider="yfinance", allow_network=True, asof=end,
+            )
+    finally:
+        price_mod._download_yfinance, price_mod._download_stooq = orig_yf, orig_stooq
+
+    today = df[df["date"] == pd.Timestamp(end)]
+    assert set(today["ticker"]) == {"AAA", "BBB"}, \
+        "AAA should have been backfilled from Stooq for today's date"
+    assert float(today.loc[today["ticker"] == "AAA", "close"].iloc[0]) == 11.0
+
+
 # ---------------------------------------------------------------------------
 # scoring
 # ---------------------------------------------------------------------------
