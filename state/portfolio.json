@@ -1,8 +1,8 @@
 {
   "cash": 5714.879999999998,
   "start_capital": 10000.0,
-  "bar_count": 11,
-  "last_run_date": "2026-09-08",
+  "bar_count": 12,
+  "last_run_date": "2026-09-10",
   "positions": [
     {
       "trade_id": 1,
@@ -25,8 +25,8 @@
       "av_verdict": "confirmed",
       "last_price": 524.14,
       "last_value": 563.27,
-      "bars_held": 9,
-      "stale_days": 1,
+      "bars_held": 10,
+      "stale_days": 2,
       "unrealised_pct": 0.182868
     },
     {
@@ -50,8 +50,8 @@
       "av_verdict": "confirmed",
       "last_price": 1016.59,
       "last_value": 523.13,
-      "bars_held": 8,
-      "stale_days": 1,
+      "bars_held": 9,
+      "stale_days": 2,
       "unrealised_pct": 0.097583
     },
     {
@@ -75,8 +75,8 @@
       "av_verdict": "confirmed",
       "last_price": 1740.0,
       "last_value": 536.02,
-      "bars_held": 7,
-      "stale_days": 1,
+      "bars_held": 8,
+      "stale_days": 2,
       "unrealised_pct": 0.122437
     },
     {
@@ -100,8 +100,8 @@
       "av_verdict": "confirmed",
       "last_price": 467.46,
       "last_value": 482.03,
-      "bars_held": 6,
-      "stale_days": 1,
+      "bars_held": 7,
+      "stale_days": 2,
       "unrealised_pct": 0.010651
     },
     {
@@ -125,8 +125,8 @@
       "av_verdict": "confirmed",
       "last_price": 370.72,
       "last_value": 489.9,
-      "bars_held": 5,
-      "stale_days": 1,
+      "bars_held": 6,
+      "stale_days": 2,
       "unrealised_pct": 0.029375
     },
     {
@@ -150,8 +150,8 @@
       "av_verdict": "confirmed",
       "last_price": 388.9,
       "last_value": 487.15,
-      "bars_held": 4,
-      "stale_days": 1,
+      "bars_held": 5,
+      "stale_days": 2,
       "unrealised_pct": 0.020808
     },
     {
@@ -175,8 +175,8 @@
       "av_verdict": "confirmed",
       "last_price": 60.04,
       "last_value": 474.02,
-      "bars_held": 1,
-      "stale_days": 1,
+      "bars_held": 2,
+      "stale_days": 2,
       "unrealised_pct": -0.001832
     },
     {
@@ -203,8 +203,8 @@
       "av_verdict": "confirmed",
       "last_price": 255.09,
       "last_value": 480.89,
-      "bars_held": 1,
-      "stale_days": 1,
+      "bars_held": 2,
+      "stale_days": 2,
       "unrealised_pct": 0.012635
     },
     {
@@ -231,8 +231,8 @@
       "av_verdict": "confirmed",
       "last_price": 42.77,
       "last_value": 464.76,
-      "bars_held": 1,
-      "stale_days": 1,
+      "bars_held": 2,
+      "stale_days": 2,
       "unrealised_pct": -0.021331
     }
   ],
@@ -258,7 +258,7 @@
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score",
-      "retries": 1
+      "retries": 2
     },
     {
       "side": "BUY",
@@ -278,6 +278,29 @@
         "technical": -0.0804661143928516
       },
       "signal_close": 369.3500061035156,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score",
+      "retries": 1
+    },
+    {
+      "side": "BUY",
+      "ticker": "GOOG",
+      "sector": "Communication Services",
+      "name": "Alphabet Inc. (Class C)",
+      "notional": 486.48,
+      "entry_score": 0.776423257523575,
+      "rank": 10,
+      "blocks": {
+        "value": -0.3654991602347105,
+        "quality": 1.4637092497256956,
+        "growth": 1.4088002233458399,
+        "momentum": -0.26308664248019453,
+        "earnings": 4.196860964161699,
+        "risk": 0.07410053957684902,
+        "technical": 0.4749531093146364
+      },
+      "signal_close": 328.3800048828125,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
