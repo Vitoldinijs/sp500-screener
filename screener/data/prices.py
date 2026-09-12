@@ -17,11 +17,30 @@ from __future__ import annotations
 
 import io
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _today_et() -> date:
+    """Today's date in US/Eastern — NOT the runner's system timezone.
+
+    GitHub Actions runners are UTC. This job's cron target (22:15 UTC) sits
+    only ~1h45m before midnight UTC, and GitHub's own docs say scheduled
+    runs are best-effort, not exact — a delay past that (routine, not rare)
+    pushes execution into the next UTC calendar day while the US session
+    that just closed is still "today" in Eastern time. Asking any provider
+    for a day that, from the market's perspective, hasn't happened yet is
+    guaranteed to come back empty for the ENTIRE universe at once — this is
+    what was actually behind runs where every single ticker "went missing"
+    on the same day, not a provider outage.
+    """
+    return datetime.now(_ET).date()
 
 COLUMNS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 CHUNK = 100          # tickers per yfinance batch call
@@ -189,7 +208,7 @@ def get_prices(
     asof: date | None = None,
 ) -> pd.DataFrame:
     """Fetch (or load) adjusted daily bars for `tickers`."""
-    end = asof or date.today()
+    end = asof or _today_et()
     start = end - timedelta(days=int(lookback_days * 1.6))  # calendar padding
 
     cached = load_cache(cache_path)
