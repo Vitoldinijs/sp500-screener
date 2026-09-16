@@ -1,8 +1,8 @@
 {
-  "cash": 5714.879999999998,
+  "cash": 3768.9599999999987,
   "start_capital": 10000.0,
-  "bar_count": 13,
-  "last_run_date": "2026-09-11",
+  "bar_count": 14,
+  "last_run_date": "2026-09-14",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 524.14,
-      "last_value": 563.27,
-      "bars_held": 11,
-      "stale_days": 3,
-      "unrealised_pct": 0.182868
+      "last_price": 534.28,
+      "last_value": 574.16,
+      "bars_held": 12,
+      "stale_days": 0,
+      "unrealised_pct": 0.205737
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 1016.59,
-      "last_value": 523.13,
-      "bars_held": 10,
-      "stale_days": 3,
-      "unrealised_pct": 0.097583
+      "last_price": 924.03,
+      "last_value": 475.5,
+      "bars_held": 11,
+      "stale_days": 0,
+      "unrealised_pct": -0.00235
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1740.0,
-      "last_value": 536.02,
-      "bars_held": 9,
-      "stale_days": 3,
-      "unrealised_pct": 0.122437
+      "last_price": 1551.99,
+      "last_value": 478.1,
+      "bars_held": 10,
+      "stale_days": 0,
+      "unrealised_pct": 0.001152
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 467.46,
-      "last_value": 482.03,
-      "bars_held": 8,
-      "stale_days": 3,
-      "unrealised_pct": 0.010651
+      "last_price": 426.94,
+      "last_value": 440.25,
+      "bars_held": 9,
+      "stale_days": 0,
+      "unrealised_pct": -0.076947
     },
     {
       "trade_id": 5,
@@ -123,11 +123,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 370.72,
-      "last_value": 489.9,
-      "bars_held": 7,
-      "stale_days": 3,
-      "unrealised_pct": 0.029375
+      "last_price": 382.95,
+      "last_value": 506.06,
+      "bars_held": 8,
+      "stale_days": 0,
+      "unrealised_pct": 0.06333
     },
     {
       "trade_id": 6,
@@ -148,11 +148,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 388.9,
-      "last_value": 487.15,
-      "bars_held": 6,
-      "stale_days": 3,
-      "unrealised_pct": 0.020808
+      "last_price": 396.45,
+      "last_value": 496.61,
+      "bars_held": 7,
+      "stale_days": 0,
+      "unrealised_pct": 0.040631
     },
     {
       "trade_id": 7,
@@ -173,11 +173,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 60.04,
-      "last_value": 474.02,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": -0.001832
+      "last_price": 61.78,
+      "last_value": 487.76,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": 0.027101
     },
     {
       "trade_id": 8,
@@ -201,11 +201,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 255.09,
-      "last_value": 480.89,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": 0.012635
+      "last_price": 257.06,
+      "last_value": 484.61,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": 0.020468
     },
     {
       "trade_id": 9,
@@ -229,23 +229,24 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 42.77,
-      "last_value": 464.76,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": -0.021331
-    }
-  ],
-  "pending_orders": [
+      "last_price": 45.03,
+      "last_value": 489.32,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": 0.030386
+    },
     {
-      "side": "BUY",
+      "trade_id": 10,
       "ticker": "NVDA",
       "sector": "Information Technology",
       "name": "Nvidia",
-      "notional": 486.48,
+      "shares": 2.301822,
+      "entry_date": "2026-09-14",
+      "entry_price": 211.3456,
+      "cost_basis": 486.48,
+      "entry_bar": 14,
       "entry_score": 0.6809721702367264,
-      "rank": 8,
-      "blocks": {
+      "entry_blocks": {
         "value": -1.1822094995409358,
         "quality": 2.3712459108370925,
         "growth": 2.4369032832591606,
@@ -254,21 +255,26 @@
         "risk": -0.19603010003779728,
         "technical": -0.042040350264295534
       },
-      "signal_close": 230.36000061035156,
+      "entry_rank": 8,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 3
+      "last_price": 210.96,
+      "last_value": 485.59,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.001829
     },
     {
-      "side": "BUY",
+      "trade_id": 11,
       "ticker": "TRV",
       "sector": "Financials",
       "name": "Travelers Companies (The)",
-      "notional": 486.48,
+      "shares": 1.269548,
+      "entry_date": "2026-09-14",
+      "entry_price": 383.1915,
+      "cost_basis": 486.48,
+      "entry_bar": 14,
       "entry_score": 0.8197914702434592,
-      "rank": 8,
-      "blocks": {
+      "entry_blocks": {
         "value": 1.215230467965422,
         "quality": -0.12144536087520541,
         "growth": -0.3758707799348074,
@@ -277,21 +283,26 @@
         "risk": 0.6030540698252209,
         "technical": -0.0804661143928516
       },
-      "signal_close": 369.3500061035156,
+      "entry_rank": 8,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 2
+      "last_price": 378.05,
+      "last_value": 479.95,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.013423
     },
     {
-      "side": "BUY",
+      "trade_id": 12,
       "ticker": "GOOG",
       "sector": "Communication Services",
       "name": "Alphabet Inc. (Class C)",
-      "notional": 486.48,
+      "shares": 1.433862,
+      "entry_date": "2026-09-14",
+      "entry_price": 339.2795,
+      "cost_basis": 486.48,
+      "entry_bar": 14,
       "entry_score": 0.776423257523575,
-      "rank": 10,
-      "blocks": {
+      "entry_blocks": {
         "value": -0.3654991602347105,
         "quality": 1.4637092497256956,
         "growth": 1.4088002233458399,
@@ -300,21 +311,26 @@
         "risk": 0.07410053957684902,
         "technical": 0.4749531093146364
       },
-      "signal_close": 328.3800048828125,
+      "entry_rank": 10,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 1
+      "last_price": 345.71,
+      "last_value": 495.7,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.018952
     },
     {
-      "side": "BUY",
+      "trade_id": 13,
       "ticker": "CNC",
       "sector": "Health Care",
       "name": "Centene Corporation",
-      "notional": 486.48,
+      "shares": 7.223843,
+      "entry_date": "2026-09-14",
+      "entry_price": 67.3437,
+      "cost_basis": 486.48,
+      "entry_bar": 14,
       "entry_score": 0.7994794227521653,
-      "rank": 9,
-      "blocks": {
+      "entry_blocks": {
         "value": 1.2962023822329627,
         "quality": -1.353261681376673,
         "growth": -0.5780959126470824,
@@ -323,12 +339,39 @@
         "risk": -0.005066038726363255,
         "technical": -0.10237839097471668
       },
-      "signal_close": 65.4000015258789,
+      "entry_rank": 9,
+      "av_verdict": "confirmed",
+      "last_price": 69.41,
+      "last_value": 501.41,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.03069
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "GOOGL",
+      "sector": "Communication Services",
+      "name": "Alphabet Inc. (Class A)",
+      "notional": 484.0,
+      "entry_score": 0.8410723709429708,
+      "rank": 8,
+      "blocks": {
+        "value": -0.3791628567675373,
+        "quality": 1.461933114403917,
+        "growth": 1.3942538756462817,
+        "momentum": 0.09775964055743695,
+        "earnings": 4.197997932171494,
+        "risk": 0.04290532467272344,
+        "technical": 0.00406294729623613
+      },
+      "signal_close": 349.3900146484375,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 10,
+  "next_trade_id": 14,
   "version": 2
 }
