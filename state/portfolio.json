@@ -1,8 +1,8 @@
 {
   "cash": 3768.9599999999987,
   "start_capital": 10000.0,
-  "bar_count": 14,
-  "last_run_date": "2026-09-14",
+  "bar_count": 15,
+  "last_run_date": "2026-09-16",
   "positions": [
     {
       "trade_id": 1,
@@ -25,8 +25,8 @@
       "av_verdict": "confirmed",
       "last_price": 534.28,
       "last_value": 574.16,
-      "bars_held": 12,
-      "stale_days": 0,
+      "bars_held": 13,
+      "stale_days": 1,
       "unrealised_pct": 0.205737
     },
     {
@@ -50,8 +50,8 @@
       "av_verdict": "confirmed",
       "last_price": 924.03,
       "last_value": 475.5,
-      "bars_held": 11,
-      "stale_days": 0,
+      "bars_held": 12,
+      "stale_days": 1,
       "unrealised_pct": -0.00235
     },
     {
@@ -75,8 +75,8 @@
       "av_verdict": "confirmed",
       "last_price": 1551.99,
       "last_value": 478.1,
-      "bars_held": 10,
-      "stale_days": 0,
+      "bars_held": 11,
+      "stale_days": 1,
       "unrealised_pct": 0.001152
     },
     {
@@ -100,8 +100,8 @@
       "av_verdict": "confirmed",
       "last_price": 426.94,
       "last_value": 440.25,
-      "bars_held": 9,
-      "stale_days": 0,
+      "bars_held": 10,
+      "stale_days": 1,
       "unrealised_pct": -0.076947
     },
     {
@@ -125,8 +125,8 @@
       "av_verdict": "confirmed",
       "last_price": 382.95,
       "last_value": 506.06,
-      "bars_held": 8,
-      "stale_days": 0,
+      "bars_held": 9,
+      "stale_days": 1,
       "unrealised_pct": 0.06333
     },
     {
@@ -150,8 +150,8 @@
       "av_verdict": "confirmed",
       "last_price": 396.45,
       "last_value": 496.61,
-      "bars_held": 7,
-      "stale_days": 0,
+      "bars_held": 8,
+      "stale_days": 1,
       "unrealised_pct": 0.040631
     },
     {
@@ -175,8 +175,8 @@
       "av_verdict": "confirmed",
       "last_price": 61.78,
       "last_value": 487.76,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": 0.027101
     },
     {
@@ -203,8 +203,8 @@
       "av_verdict": "confirmed",
       "last_price": 257.06,
       "last_value": 484.61,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": 0.020468
     },
     {
@@ -231,8 +231,8 @@
       "av_verdict": "confirmed",
       "last_price": 45.03,
       "last_value": 489.32,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": 0.030386
     },
     {
@@ -259,8 +259,8 @@
       "av_verdict": "confirmed",
       "last_price": 210.96,
       "last_value": 485.59,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": -0.001829
     },
     {
@@ -287,8 +287,8 @@
       "av_verdict": "confirmed",
       "last_price": 378.05,
       "last_value": 479.95,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": -0.013423
     },
     {
@@ -315,8 +315,8 @@
       "av_verdict": "confirmed",
       "last_price": 345.71,
       "last_value": 495.7,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": 0.018952
     },
     {
@@ -343,8 +343,8 @@
       "av_verdict": "confirmed",
       "last_price": 69.41,
       "last_value": 501.41,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": 0.03069
     }
   ],
@@ -367,6 +367,29 @@
         "technical": 0.00406294729623613
       },
       "signal_close": 349.3900146484375,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score",
+      "retries": 1
+    },
+    {
+      "side": "BUY",
+      "ticker": "ALL",
+      "sector": "Financials",
+      "name": "Allstate",
+      "notional": 484.0,
+      "entry_score": 0.6643531276938139,
+      "rank": 14,
+      "blocks": {
+        "value": 1.275714742496789,
+        "quality": 0.1637485141969772,
+        "growth": -0.05524579084430264,
+        "momentum": 0.5533737975568457,
+        "earnings": 1.8562974348758727,
+        "risk": 0.48366709359417775,
+        "technical": -0.04673207763129128
+      },
+      "signal_close": 257.2099914550781,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
