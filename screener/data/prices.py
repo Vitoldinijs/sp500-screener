@@ -44,12 +44,13 @@ def _today_et() -> date:
 
 COLUMNS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 CHUNK = 100          # tickers per yfinance batch call
-STOOQ_MAX = 200      # cap per-ticker fallback work so a run can't hang.
-                     # This is a genuine safety valve, not a normal-case
-                     # limit — the normal-case number of missing tickers on
-                     # any given day should be near zero. If it's regularly
-                     # anywhere close to this cap, that's a sign something
-                     # upstream (rate limiting, a bad chunk) needs
+STOOQ_MAX = 60       # cap per-ticker fallback work so a run can't hang.
+                     # Was 200, cut back down: if Stooq itself is slow or
+                     # also rate-limited that day, 200 sequential requests
+                     # at up to 30s each could alone eat the whole job's
+                     # time budget. This is a genuine safety valve, not a
+                     # normal-case limit — if it's regularly anywhere close
+                     # to this cap, that's a sign something upstream needs
                      # attention, not a reason to raise the cap further.
 
 
@@ -70,7 +71,7 @@ def _download_yfinance(tickers: list[str], start: date, end: date) -> pd.DataFra
         # costs at most ~15s when things are fine (no retry needed) and
         # turns most one-off blips into a non-event instead of a dropped
         # chunk.
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 raw = yf.download(
                     chunk,
@@ -80,16 +81,16 @@ def _download_yfinance(tickers: list[str], start: date, end: date) -> pd.DataFra
                     group_by="ticker",
                     threads=True,
                     progress=False,
-                    timeout=60,
+                    timeout=20,
                 )
                 break
             except Exception as exc:  # noqa: BLE001
                 wait = 3 * (attempt + 1)
                 print(f"[prices] yfinance chunk {i//CHUNK} attempt {attempt+1} "
-                      f"failed ({exc}); retrying in {wait}s" if attempt < 2
+                      f"failed ({exc}); retrying in {wait}s" if attempt < 1
                       else f"[prices] yfinance chunk {i//CHUNK} failed after "
-                           f"3 attempts ({exc}); giving up on this chunk")
-                if attempt < 2:
+                           f"2 attempts ({exc}); giving up on this chunk")
+                if attempt < 1:
                     time.sleep(wait)
         if raw is None or raw.empty:
             continue
@@ -141,7 +142,7 @@ def _download_stooq(tickers: list[str], start: date, end: date) -> pd.DataFrame:
             f"&d2={end:%Y%m%d}&i=d"
         )
         try:
-            resp = requests.get(url, timeout=30)
+            resp = requests.get(url, timeout=8)
             if resp.status_code != 200 or "Date" not in resp.text[:200]:
                 continue
             sub = pd.read_csv(io.StringIO(resp.text))
