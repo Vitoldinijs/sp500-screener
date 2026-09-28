@@ -1,8 +1,8 @@
 {
-  "cash": 3768.9599999999987,
+  "cash": 1832.9599999999987,
   "start_capital": 10000.0,
-  "bar_count": 17,
-  "last_run_date": "2026-09-18",
+  "bar_count": 18,
+  "last_run_date": "2026-09-28",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 534.28,
-      "last_value": 574.16,
-      "bars_held": 15,
-      "stale_days": 3,
-      "unrealised_pct": 0.205737
+      "last_price": 543.525,
+      "last_value": 584.1,
+      "bars_held": 16,
+      "stale_days": 0,
+      "unrealised_pct": 0.226611
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 924.03,
-      "last_value": 475.5,
-      "bars_held": 14,
-      "stale_days": 3,
-      "unrealised_pct": -0.00235
+      "last_price": 1056.73,
+      "last_value": 543.79,
+      "bars_held": 15,
+      "stale_days": 0,
+      "unrealised_pct": 0.14093
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1551.99,
-      "last_value": 478.1,
-      "bars_held": 13,
-      "stale_days": 3,
-      "unrealised_pct": 0.001152
+      "last_price": 1710.0551,
+      "last_value": 526.8,
+      "bars_held": 14,
+      "stale_days": 0,
+      "unrealised_pct": 0.103131
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 426.94,
-      "last_value": 440.25,
-      "bars_held": 12,
-      "stale_days": 3,
-      "unrealised_pct": -0.076947
+      "last_price": 457.55,
+      "last_value": 471.81,
+      "bars_held": 13,
+      "stale_days": 0,
+      "unrealised_pct": -0.010777
     },
     {
       "trade_id": 5,
@@ -123,11 +123,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 382.95,
-      "last_value": 506.06,
-      "bars_held": 11,
-      "stale_days": 3,
-      "unrealised_pct": 0.06333
+      "last_price": 389.62,
+      "last_value": 514.88,
+      "bars_held": 12,
+      "stale_days": 0,
+      "unrealised_pct": 0.081862
     },
     {
       "trade_id": 6,
@@ -148,11 +148,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 396.45,
-      "last_value": 496.61,
-      "bars_held": 10,
-      "stale_days": 3,
-      "unrealised_pct": 0.040631
+      "last_price": 389.515,
+      "last_value": 487.92,
+      "bars_held": 11,
+      "stale_days": 0,
+      "unrealised_pct": 0.022422
     },
     {
       "trade_id": 7,
@@ -173,11 +173,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 61.78,
-      "last_value": 487.76,
-      "bars_held": 7,
-      "stale_days": 3,
-      "unrealised_pct": 0.027101
+      "last_price": 56.165,
+      "last_value": 443.43,
+      "bars_held": 8,
+      "stale_days": 0,
+      "unrealised_pct": -0.066247
     },
     {
       "trade_id": 8,
@@ -201,11 +201,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 257.06,
-      "last_value": 484.61,
-      "bars_held": 7,
-      "stale_days": 3,
-      "unrealised_pct": 0.020468
+      "last_price": 253.28,
+      "last_value": 477.48,
+      "bars_held": 8,
+      "stale_days": 0,
+      "unrealised_pct": 0.005454
     },
     {
       "trade_id": 9,
@@ -229,11 +229,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 45.03,
-      "last_value": 489.32,
-      "bars_held": 7,
-      "stale_days": 3,
-      "unrealised_pct": 0.030386
+      "last_price": 42.33,
+      "last_value": 459.98,
+      "bars_held": 8,
+      "stale_days": 0,
+      "unrealised_pct": -0.031397
     },
     {
       "trade_id": 10,
@@ -257,11 +257,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 210.96,
-      "last_value": 485.59,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": -0.001829
+      "last_price": 229.645,
+      "last_value": 528.6,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": 0.086581
     },
     {
       "trade_id": 11,
@@ -285,11 +285,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 378.05,
-      "last_value": 479.95,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": -0.013423
+      "last_price": 363.165,
+      "last_value": 461.06,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": -0.052253
     },
     {
       "trade_id": 12,
@@ -313,11 +313,11 @@
       },
       "entry_rank": 10,
       "av_verdict": "confirmed",
-      "last_price": 345.71,
-      "last_value": 495.7,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": 0.018952
+      "last_price": 338.31,
+      "last_value": 485.09,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": -0.002857
     },
     {
       "trade_id": 13,
@@ -341,23 +341,24 @@
       },
       "entry_rank": 9,
       "av_verdict": "confirmed",
-      "last_price": 69.41,
-      "last_value": 501.41,
-      "bars_held": 3,
-      "stale_days": 3,
-      "unrealised_pct": 0.03069
-    }
-  ],
-  "pending_orders": [
+      "last_price": 62.2783,
+      "last_value": 449.89,
+      "bars_held": 4,
+      "stale_days": 0,
+      "unrealised_pct": -0.075214
+    },
     {
-      "side": "BUY",
+      "trade_id": 14,
       "ticker": "GOOGL",
       "sector": "Communication Services",
       "name": "Alphabet Inc. (Class A)",
-      "notional": 484.0,
+      "shares": 1.419895,
+      "entry_date": "2026-09-28",
+      "entry_price": 340.8704,
+      "cost_basis": 484.0,
+      "entry_bar": 18,
       "entry_score": 0.8410723709429708,
-      "rank": 8,
-      "blocks": {
+      "entry_blocks": {
         "value": -0.3791628567675373,
         "quality": 1.461933114403917,
         "growth": 1.3942538756462817,
@@ -366,21 +367,26 @@
         "risk": 0.04290532467272344,
         "technical": 0.00406294729623613
       },
-      "signal_close": 349.3900146484375,
+      "entry_rank": 8,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 3
+      "last_price": 341.53,
+      "last_value": 484.94,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.001942
     },
     {
-      "side": "BUY",
+      "trade_id": 15,
       "ticker": "ALL",
       "sector": "Financials",
       "name": "Allstate",
-      "notional": 484.0,
+      "shares": 2.115437,
+      "entry_date": "2026-09-28",
+      "entry_price": 228.7943,
+      "cost_basis": 484.0,
+      "entry_bar": 18,
       "entry_score": 0.6643531276938139,
-      "rank": 14,
-      "blocks": {
+      "entry_blocks": {
         "value": 1.275714742496789,
         "quality": 0.1637485141969772,
         "growth": -0.05524579084430264,
@@ -389,21 +395,26 @@
         "risk": 0.48366709359417775,
         "technical": -0.04673207763129128
       },
-      "signal_close": 257.2099914550781,
+      "entry_rank": 14,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 2
+      "last_price": 227.545,
+      "last_value": 481.36,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.005455
     },
     {
-      "side": "BUY",
+      "trade_id": 16,
       "ticker": "TGT",
       "sector": "Consumer Staples",
       "name": "Target Corporation",
-      "notional": 484.0,
+      "shares": 3.089132,
+      "entry_date": "2026-09-28",
+      "entry_price": 156.6783,
+      "cost_basis": 484.0,
+      "entry_bar": 18,
       "entry_score": 0.6369924288836575,
-      "rank": 16,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.5169435305631409,
         "quality": -0.5609987008817506,
         "growth": -0.038653089179840006,
@@ -412,21 +423,26 @@
         "risk": 0.27064737524417115,
         "technical": -0.7861961176831198
       },
-      "signal_close": 154.67999267578125,
+      "entry_rank": 16,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score",
-      "retries": 1
+      "last_price": 158.43,
+      "last_value": 489.41,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.011178
     },
     {
-      "side": "BUY",
+      "trade_id": 17,
       "ticker": "INCY",
       "sector": "Health Care",
       "name": "Incyte",
-      "notional": 484.0,
+      "shares": 3.924697,
+      "entry_date": "2026-09-28",
+      "entry_price": 123.3216,
+      "cost_basis": 484.0,
+      "entry_bar": 18,
       "entry_score": 0.662112373894027,
-      "rank": 18,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.35605972784713563,
         "quality": 0.5036708481790161,
         "growth": 0.5191598695187023,
@@ -435,12 +451,39 @@
         "risk": 0.19739015541044,
         "technical": -0.6123842989622295
       },
-      "signal_close": 127.62000274658203,
+      "entry_rank": 18,
+      "av_verdict": "confirmed",
+      "last_price": 125.98,
+      "last_value": 494.43,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.02155
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "AMZN",
+      "sector": "Consumer Discretionary",
+      "name": "Amazon",
+      "notional": 486.57,
+      "entry_score": 0.6121263867209685,
+      "rank": 17,
+      "blocks": {
+        "value": -0.01172638762890057,
+        "quality": 0.15873731639462219,
+        "growth": 1.0218354965739618,
+        "momentum": 0.0378713451723798,
+        "earnings": 4.134420649754185,
+        "risk": -0.44312331833369933,
+        "technical": 0.0718891723930078
+      },
+      "signal_close": 246.02499389648438,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 14,
+  "next_trade_id": 18,
   "version": 2
 }
