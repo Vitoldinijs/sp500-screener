@@ -1,8 +1,8 @@
 {
   "cash": 1832.9599999999987,
   "start_capital": 10000.0,
-  "bar_count": 18,
-  "last_run_date": "2026-09-28",
+  "bar_count": 19,
+  "last_run_date": "2026-09-29",
   "positions": [
     {
       "trade_id": 1,
@@ -25,8 +25,8 @@
       "av_verdict": "confirmed",
       "last_price": 543.525,
       "last_value": 584.1,
-      "bars_held": 16,
-      "stale_days": 0,
+      "bars_held": 17,
+      "stale_days": 1,
       "unrealised_pct": 0.226611
     },
     {
@@ -50,8 +50,8 @@
       "av_verdict": "confirmed",
       "last_price": 1056.73,
       "last_value": 543.79,
-      "bars_held": 15,
-      "stale_days": 0,
+      "bars_held": 16,
+      "stale_days": 1,
       "unrealised_pct": 0.14093
     },
     {
@@ -75,8 +75,8 @@
       "av_verdict": "confirmed",
       "last_price": 1710.0551,
       "last_value": 526.8,
-      "bars_held": 14,
-      "stale_days": 0,
+      "bars_held": 15,
+      "stale_days": 1,
       "unrealised_pct": 0.103131
     },
     {
@@ -100,8 +100,8 @@
       "av_verdict": "confirmed",
       "last_price": 457.55,
       "last_value": 471.81,
-      "bars_held": 13,
-      "stale_days": 0,
+      "bars_held": 14,
+      "stale_days": 1,
       "unrealised_pct": -0.010777
     },
     {
@@ -125,8 +125,8 @@
       "av_verdict": "confirmed",
       "last_price": 389.62,
       "last_value": 514.88,
-      "bars_held": 12,
-      "stale_days": 0,
+      "bars_held": 13,
+      "stale_days": 1,
       "unrealised_pct": 0.081862
     },
     {
@@ -150,8 +150,8 @@
       "av_verdict": "confirmed",
       "last_price": 389.515,
       "last_value": 487.92,
-      "bars_held": 11,
-      "stale_days": 0,
+      "bars_held": 12,
+      "stale_days": 1,
       "unrealised_pct": 0.022422
     },
     {
@@ -175,8 +175,8 @@
       "av_verdict": "confirmed",
       "last_price": 56.165,
       "last_value": 443.43,
-      "bars_held": 8,
-      "stale_days": 0,
+      "bars_held": 9,
+      "stale_days": 1,
       "unrealised_pct": -0.066247
     },
     {
@@ -203,8 +203,8 @@
       "av_verdict": "confirmed",
       "last_price": 253.28,
       "last_value": 477.48,
-      "bars_held": 8,
-      "stale_days": 0,
+      "bars_held": 9,
+      "stale_days": 1,
       "unrealised_pct": 0.005454
     },
     {
@@ -231,8 +231,8 @@
       "av_verdict": "confirmed",
       "last_price": 42.33,
       "last_value": 459.98,
-      "bars_held": 8,
-      "stale_days": 0,
+      "bars_held": 9,
+      "stale_days": 1,
       "unrealised_pct": -0.031397
     },
     {
@@ -259,8 +259,8 @@
       "av_verdict": "confirmed",
       "last_price": 229.645,
       "last_value": 528.6,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": 0.086581
     },
     {
@@ -287,8 +287,8 @@
       "av_verdict": "confirmed",
       "last_price": 363.165,
       "last_value": 461.06,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": -0.052253
     },
     {
@@ -315,8 +315,8 @@
       "av_verdict": "confirmed",
       "last_price": 338.31,
       "last_value": 485.09,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": -0.002857
     },
     {
@@ -343,8 +343,8 @@
       "av_verdict": "confirmed",
       "last_price": 62.2783,
       "last_value": 449.89,
-      "bars_held": 4,
-      "stale_days": 0,
+      "bars_held": 5,
+      "stale_days": 1,
       "unrealised_pct": -0.075214
     },
     {
@@ -371,8 +371,8 @@
       "av_verdict": "confirmed",
       "last_price": 341.53,
       "last_value": 484.94,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": 0.001942
     },
     {
@@ -399,8 +399,8 @@
       "av_verdict": "confirmed",
       "last_price": 227.545,
       "last_value": 481.36,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": -0.005455
     },
     {
@@ -427,8 +427,8 @@
       "av_verdict": "confirmed",
       "last_price": 158.43,
       "last_value": 489.41,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": 0.011178
     },
     {
@@ -455,8 +455,8 @@
       "av_verdict": "confirmed",
       "last_price": 125.98,
       "last_value": 494.43,
-      "bars_held": 0,
-      "stale_days": 0,
+      "bars_held": 1,
+      "stale_days": 1,
       "unrealised_pct": 0.02155
     }
   ],
@@ -479,6 +479,29 @@
         "technical": 0.0718891723930078
       },
       "signal_close": 246.02499389648438,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score",
+      "retries": 1
+    },
+    {
+      "side": "BUY",
+      "ticker": "ILMN",
+      "sector": "Health Care",
+      "name": "Illumina, Inc.",
+      "notional": 486.57,
+      "entry_score": 0.6100566751620263,
+      "rank": 18,
+      "blocks": {
+        "value": -0.7382512714864492,
+        "quality": 0.4427349355287207,
+        "growth": -0.45901928855943464,
+        "momentum": 2.6838479135384166,
+        "earnings": -0.26428889502625796,
+        "risk": -0.8089470539597733,
+        "technical": -0.08620800274815466
+      },
+      "signal_close": 271.8999938964844,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
