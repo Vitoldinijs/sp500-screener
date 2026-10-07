@@ -1,8 +1,8 @@
 {
-  "cash": 369.8599999999989,
+  "cash": 0.0,
   "start_capital": 10000.0,
-  "bar_count": 21,
-  "last_run_date": "2026-10-05",
+  "bar_count": 22,
+  "last_run_date": "2026-10-06",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 552.29,
-      "last_value": 593.52,
-      "bars_held": 19,
+      "last_price": 574.0,
+      "last_value": 616.85,
+      "bars_held": 20,
       "stale_days": 0,
-      "unrealised_pct": 0.246393
+      "unrealised_pct": 0.295386
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 1063.96,
-      "last_value": 547.51,
-      "bars_held": 18,
+      "last_price": 1045.5601,
+      "last_value": 538.04,
+      "bars_held": 19,
       "stale_days": 0,
-      "unrealised_pct": 0.148735
+      "unrealised_pct": 0.128866
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1704.16,
-      "last_value": 524.98,
-      "bars_held": 17,
+      "last_price": 1660.46,
+      "last_value": 511.52,
+      "bars_held": 18,
       "stale_days": 0,
-      "unrealised_pct": 0.099319
+      "unrealised_pct": 0.071134
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 441.64,
-      "last_value": 455.41,
-      "bars_held": 16,
+      "last_price": 411.04,
+      "last_value": 423.85,
+      "bars_held": 17,
       "stale_days": 0,
-      "unrealised_pct": -0.045162
+      "unrealised_pct": -0.111332
     },
     {
       "trade_id": 5,
@@ -123,11 +123,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 419.33,
-      "last_value": 554.14,
-      "bars_held": 15,
+      "last_price": 419.22,
+      "last_value": 553.99,
+      "bars_held": 16,
       "stale_days": 0,
-      "unrealised_pct": 0.164355
+      "unrealised_pct": 0.16404
     },
     {
       "trade_id": 6,
@@ -148,11 +148,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 433.47,
-      "last_value": 542.98,
-      "bars_held": 14,
+      "last_price": 432.36,
+      "last_value": 541.59,
+      "bars_held": 15,
       "stale_days": 0,
-      "unrealised_pct": 0.137798
+      "unrealised_pct": 0.134885
     },
     {
       "trade_id": 7,
@@ -173,11 +173,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 58.31,
-      "last_value": 460.36,
-      "bars_held": 11,
+      "last_price": 58.33,
+      "last_value": 460.52,
+      "bars_held": 12,
       "stale_days": 0,
-      "unrealised_pct": -0.030597
+      "unrealised_pct": -0.03026
     },
     {
       "trade_id": 8,
@@ -201,11 +201,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 269.72,
-      "last_value": 508.47,
-      "bars_held": 11,
+      "last_price": 269.79,
+      "last_value": 508.6,
+      "bars_held": 12,
       "stale_days": 0,
-      "unrealised_pct": 0.070711
+      "unrealised_pct": 0.070985
     },
     {
       "trade_id": 9,
@@ -229,11 +229,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 43.85,
-      "last_value": 476.5,
-      "bars_held": 11,
+      "last_price": 44.1,
+      "last_value": 479.22,
+      "bars_held": 12,
       "stale_days": 0,
-      "unrealised_pct": 0.00339
+      "unrealised_pct": 0.009118
     },
     {
       "trade_id": 10,
@@ -257,11 +257,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 238.9,
-      "last_value": 549.91,
-      "bars_held": 7,
+      "last_price": 239.24,
+      "last_value": 550.69,
+      "bars_held": 8,
       "stale_days": 0,
-      "unrealised_pct": 0.130386
+      "unrealised_pct": 0.131989
     },
     {
       "trade_id": 11,
@@ -285,11 +285,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 360.7,
-      "last_value": 457.93,
-      "bars_held": 7,
+      "last_price": 360.64,
+      "last_value": 457.85,
+      "bars_held": 8,
       "stale_days": 0,
-      "unrealised_pct": -0.058687
+      "unrealised_pct": -0.058851
     },
     {
       "trade_id": 12,
@@ -313,11 +313,11 @@
       },
       "entry_rank": 10,
       "av_verdict": "confirmed",
-      "last_price": 343.83,
-      "last_value": 493.0,
-      "bars_held": 7,
+      "last_price": 344.59,
+      "last_value": 494.09,
+      "bars_held": 8,
       "stale_days": 0,
-      "unrealised_pct": 0.013402
+      "unrealised_pct": 0.015643
     },
     {
       "trade_id": 13,
@@ -341,11 +341,11 @@
       },
       "entry_rank": 9,
       "av_verdict": "confirmed",
-      "last_price": 64.3,
-      "last_value": 464.49,
-      "bars_held": 7,
+      "last_price": 64.61,
+      "last_value": 466.73,
+      "bars_held": 8,
       "stale_days": 0,
-      "unrealised_pct": -0.045202
+      "unrealised_pct": -0.040598
     },
     {
       "trade_id": 14,
@@ -369,11 +369,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 346.47,
-      "last_value": 491.95,
-      "bars_held": 3,
+      "last_price": 347.68,
+      "last_value": 493.67,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": 0.016426
+      "unrealised_pct": 0.019979
     },
     {
       "trade_id": 15,
@@ -397,11 +397,11 @@
       },
       "entry_rank": 14,
       "av_verdict": "confirmed",
-      "last_price": 224.71,
-      "last_value": 475.36,
-      "bars_held": 3,
+      "last_price": 224.27,
+      "last_value": 474.43,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": -0.017851
+      "unrealised_pct": -0.019773
     },
     {
       "trade_id": 16,
@@ -425,11 +425,11 @@
       },
       "entry_rank": 16,
       "av_verdict": "confirmed",
-      "last_price": 152.99,
-      "last_value": 472.61,
-      "bars_held": 3,
+      "last_price": 154.33,
+      "last_value": 476.75,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": -0.023533
+      "unrealised_pct": -0.014979
     },
     {
       "trade_id": 17,
@@ -453,11 +453,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 114.13,
-      "last_value": 447.93,
-      "bars_held": 3,
+      "last_price": 112.73,
+      "last_value": 442.43,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": -0.074525
+      "unrealised_pct": -0.085888
     },
     {
       "trade_id": 18,
@@ -481,11 +481,11 @@
       },
       "entry_rank": 17,
       "av_verdict": "confirmed",
-      "last_price": 251.4,
-      "last_value": 485.92,
-      "bars_held": 1,
+      "last_price": 256.29,
+      "last_value": 495.37,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": -0.001336
+      "unrealised_pct": 0.018086
     },
     {
       "trade_id": 19,
@@ -509,11 +509,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 293.69,
-      "last_value": 522.76,
-      "bars_held": 1,
+      "last_price": 273.54,
+      "last_value": 486.9,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": 0.074378
+      "unrealised_pct": 0.000678
     },
     {
       "trade_id": 20,
@@ -537,23 +537,24 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 113.19,
-      "last_value": 489.46,
-      "bars_held": 0,
+      "last_price": 116.19,
+      "last_value": 502.43,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": -0.00102
-    }
-  ],
-  "pending_orders": [
+      "unrealised_pct": 0.025451
+    },
     {
-      "side": "BUY",
+      "trade_id": 21,
       "ticker": "BIIB",
       "sector": "Health Care",
       "name": "Biogen",
-      "notional": 369.86,
+      "shares": 1.64644,
+      "entry_date": "2026-10-06",
+      "entry_price": 224.6423,
+      "cost_basis": 369.86,
+      "entry_bar": 22,
       "entry_score": 0.5555859964967851,
-      "rank": 21,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.19559976849529653,
         "quality": 0.027419961576379864,
         "growth": -0.9032146122193362,
@@ -562,12 +563,16 @@
         "risk": 0.016369111997062136,
         "technical": -0.47528075252729696
       },
-      "signal_close": 223.58999633789062,
+      "entry_rank": 21,
       "av_verdict": "confirmed",
-      "av_reason": "price confirmed; OVERVIEW unavailable",
-      "reason": "top composite score"
+      "last_price": 222.89,
+      "last_value": 366.98,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.007787
     }
   ],
-  "next_trade_id": 21,
+  "pending_orders": [],
+  "next_trade_id": 22,
   "version": 2
 }
