@@ -98,10 +98,64 @@
   section .sub { color: var(--muted); font-size: 0.82rem; margin: -0.6rem 0 1.1rem; }
   section.empty p { color: var(--muted); font-size: 0.88rem; }
 
-  .chart-wrap { background: var(--panel); padding: 1rem; }
-  svg.chart { display: block; width: 100%; height: auto; }
-  .chart-legend { display: flex; gap: 1.3rem; margin-top: 0.7rem; font-size: 0.8rem; color: var(--muted); }
-  .chart-legend span.sw { display: inline-block; width: 10px; height: 2px; margin-right: 0.4rem; vertical-align: middle; }
+  .chart-wrap {
+    background: linear-gradient(180deg, #10161b 0%, #0f1418 100%);
+    border: 1px solid var(--line);
+    padding: 0;
+    overflow: hidden;
+  }
+  .chart-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 0.95rem;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .chart-periods { display: flex; gap: 0.2rem; }
+  .chart-period {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: 500 0.76rem var(--mono);
+    padding: 0.35rem 0.55rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .chart-period:hover { color: var(--ink); background: var(--panel-2); }
+  .chart-period.active { color: var(--ink); background: var(--panel-2); }
+  .chart-range { color: var(--muted); font: 0.75rem var(--mono); }
+  .tv-chart { position: relative; min-height: 310px; }
+  svg.chart { display: block; width: 100%; height: 310px; }
+  .chart-tooltip {
+    position: absolute;
+    display: none;
+    min-width: 170px;
+    padding: 0.6rem 0.7rem;
+    pointer-events: none;
+    background: #151c22;
+    border: 1px solid rgba(212, 162, 76, 0.35);
+    box-shadow: 0 12px 32px rgba(0,0,0,.35);
+    border-radius: 5px;
+    z-index: 3;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+  }
+  .chart-tooltip .date { color: var(--muted); margin-bottom: 0.35rem; }
+  .chart-tooltip .row { display: flex; justify-content: space-between; gap: 1rem; line-height: 1.55; }
+  .chart-tooltip .portfolio { color: var(--accent); }
+  .chart-tooltip .benchmark { color: #7f8992; }
+  .chart-legend {
+    display: flex;
+    gap: 1.3rem;
+    padding: 0.65rem 0.95rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+  }
+  .chart-legend span.sw { display: inline-block; width: 18px; height: 2px; margin-right: 0.4rem; vertical-align: middle; }
 
   /* ---- tables ----------------------------------------------------------- */
   .tbl-scroll { overflow-x: auto; }
@@ -267,26 +321,262 @@ function renderStats(d) {
 function renderEquitySection(d) {
   const rows = d.equity_curve || [];
   const sec = el('section');
-  sec.appendChild(el('h2', { text: 'Equity curve' }));
-  sec.appendChild(el('div', { class: 'sub', text: `Last ${rows.length} trading day${rows.length === 1 ? '' : 's'} of committed state.` }));
+  sec.appendChild(el('h2', { text: 'Portfolio performance' }));
+
   if (rows.length < 2) {
     sec.classList.add('empty');
     sec.appendChild(el('p', { text: 'Not enough history yet — check back after a few daily runs.' }));
     return sec;
   }
+
   const chartWrap = el('div', { class: 'chart-wrap' });
-  chartWrap.appendChild(lineChart([
-    { values: rows.map(r => r.equity), color: '#d4a24c', width: 2 },
-    { values: rows.map(r => r.benchmark_equity), color: '#5b6470', width: 1.4 },
-  ], { width: 800, height: 240 }));
-  sec.appendChild(chartWrap);
+  const toolbar = el('div', { class: 'chart-toolbar' });
+  const periods = el('div', { class: 'chart-periods' });
+  const rangeLabel = el('div', { class: 'chart-range num' });
+  toolbar.append(periods, rangeLabel);
+
+  const chartBox = el('div', { class: 'tv-chart' });
   const legend = el('div', { class: 'chart-legend' });
-  legend.appendChild(el('span', { html: '<span class="sw" style="background:#d4a24c"></span>Screener' }));
-  legend.appendChild(el('span', { html: '<span class="sw" style="background:#5b6470"></span>S&amp;P 500 (SPY)' }));
-  sec.appendChild(legend);
+  legend.append(
+    el('span', { html: '<span class="sw" style="background:#d4a24c"></span>Portfolio' }),
+    el('span', { html: '<span class="sw" style="background:#68727d"></span>S&amp;P 500 (SPY)' })
+  );
+
+  chartWrap.append(toolbar, chartBox, legend);
+  sec.appendChild(chartWrap);
+
+  const periodDefs = [
+    { id: '1W', label: '1W', days: 7 },
+    { id: '1M', label: '1M', days: 31 },
+    { id: 'ALL', label: 'All', days: null },
+  ];
+  const lastDate = new Date(rows[rows.length - 1].date + 'T00:00:00Z');
+
+  function render(periodId) {
+    periods.innerHTML = '';
+    periodDefs.forEach(function(p) {
+      const btn = el('button', {
+        class: 'chart-period' + (p.id === periodId ? ' active' : ''),
+        text: p.label,
+        type: 'button'
+      });
+      btn.addEventListener('click', function() { render(p.id); });
+      periods.appendChild(btn);
+    });
+
+    let visible = rows;
+    if (periodId !== 'ALL') {
+      const days = periodDefs.find(function(p) { return p.id === periodId; }).days;
+      const cutoff = new Date(lastDate.getTime() - (days - 1) * 86400000);
+      visible = rows.filter(function(r) {
+        return new Date(r.date + 'T00:00:00Z') >= cutoff;
+      });
+      if (visible.length < 2) visible = rows.slice(-2);
+    }
+
+    rangeLabel.textContent = fmtDate(visible[0].date) + ' — ' + fmtDate(visible[visible.length - 1].date);
+
+    const baseEquity = visible[0].equity || 1;
+    let baseBenchmark = null;
+    for (const r of visible) {
+      if (r.benchmark_equity != null) { baseBenchmark = r.benchmark_equity; break; }
+    }
+
+    const portfolioValues = visible.map(function(r) {
+      return r.equity == null ? null : (r.equity / baseEquity - 1) * 100;
+    });
+    const benchmarkValues = visible.map(function(r) {
+      return (baseBenchmark == null || r.benchmark_equity == null)
+        ? null
+        : (r.benchmark_equity / baseBenchmark - 1) * 100;
+    });
+
+    chartBox.innerHTML = '';
+    chartBox.appendChild(interactiveEquityChart(
+      portfolioValues,
+      benchmarkValues,
+      visible.map(function(r) { return r.date; }),
+      800,
+      310
+    ));
+  }
+
+  render('ALL');
   return sec;
 }
 
+function interactiveEquityChart(portfolio, benchmark, dates, width, height) {
+  const values = portfolio.concat(benchmark).filter(function(v) { return v != null; });
+  if (values.length < 2) return el('div', { text: 'Not enough data yet.' });
+
+  const pad = { left: 54, right: 18, top: 18, bottom: 28 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  let min = Math.min.apply(null, values);
+  let max = Math.max.apply(null, values);
+  const range = Math.max(max - min, 1);
+  const step = Math.max(1, Math.ceil(range / 5));
+  min = Math.floor((min - step * 0.35) / step) * step;
+  max = Math.ceil((max + step * 0.35) / step) * step;
+
+  const x = function(i) { return pad.left + (i / Math.max(1, dates.length - 1)) * plotW; };
+  const y = function(v) { return pad.top + ((max - v) / (max - min)) * plotH; };
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('class', 'chart');
+  svg.setAttribute('preserveAspectRatio', 'none');
+
+  function add(tag, attrs, textValue) {
+    const node = document.createElementNS(ns, tag);
+    Object.keys(attrs || {}).forEach(function(k) { node.setAttribute(k, attrs[k]); });
+    if (textValue != null) node.textContent = textValue;
+    svg.appendChild(node);
+    return node;
+  }
+
+  for (let i = 0; i <= 5; i++) {
+    const value = min + (max - min) * i / 5;
+    const yy = y(value);
+    add('line', {
+      x1: pad.left, x2: width - pad.right, y1: yy, y2: yy,
+      stroke: '#252d35', 'stroke-width': 1
+    });
+    add('text', {
+      x: pad.left - 8, y: yy + 4, 'text-anchor': 'end',
+      fill: '#69747e', 'font-size': 10, 'font-family': '"IBM Plex Mono", monospace'
+    }, (value >= 0 ? '+' : '') + value.toFixed(1) + '%');
+  }
+
+  const guideCount = Math.min(6, Math.max(2, dates.length));
+  for (let i = 0; i < guideCount; i++) {
+    const idx = Math.round(i * (dates.length - 1) / Math.max(1, guideCount - 1));
+    const xx = x(idx);
+    add('line', {
+      x1: xx, x2: xx, y1: pad.top, y2: height - pad.bottom,
+      stroke: '#1d252d', 'stroke-width': 1
+    });
+  }
+
+  const defs = document.createElementNS(ns, 'defs');
+  const gradient = document.createElementNS(ns, 'linearGradient');
+  const gradientId = 'portfolio-fill-' + Math.random().toString(36).slice(2);
+  gradient.setAttribute('id', gradientId);
+  gradient.setAttribute('x1', '0'); gradient.setAttribute('x2', '0');
+  gradient.setAttribute('y1', '0'); gradient.setAttribute('y2', '1');
+  const stopTop = document.createElementNS(ns, 'stop');
+  stopTop.setAttribute('offset', '0%');
+  stopTop.setAttribute('stop-color', '#d4a24c');
+  stopTop.setAttribute('stop-opacity', '0.20');
+  const stopBottom = document.createElementNS(ns, 'stop');
+  stopBottom.setAttribute('offset', '100%');
+  stopBottom.setAttribute('stop-color', '#d4a24c');
+  stopBottom.setAttribute('stop-opacity', '0');
+  gradient.append(stopTop, stopBottom);
+  defs.appendChild(gradient);
+  svg.appendChild(defs);
+
+  const portPoints = portfolio.map(function(v, i) {
+    return v == null ? null : [x(i), y(v)];
+  }).filter(Boolean);
+
+  if (portPoints.length > 1) {
+    const area = document.createElementNS(ns, 'path');
+    let areaD = 'M ' + portPoints[0][0] + ' ' + (height - pad.bottom) + ' ';
+    areaD += portPoints.map(function(p) { return 'L ' + p[0] + ' ' + p[1]; }).join(' ');
+    areaD += ' L ' + portPoints[portPoints.length - 1][0] + ' ' + (height - pad.bottom) + ' Z';
+    area.setAttribute('d', areaD);
+    area.setAttribute('fill', 'url(#' + gradientId + ')');
+    svg.appendChild(area);
+  }
+
+  function drawLine(values, color, widthPx) {
+    const pts = values.map(function(v, i) {
+      return v == null ? null : x(i) + ',' + y(v);
+    }).filter(Boolean);
+    if (pts.length < 2) return;
+    const line = document.createElementNS(ns, 'polyline');
+    line.setAttribute('points', pts.join(' '));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', color);
+    line.setAttribute('stroke-width', widthPx);
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(line);
+  }
+
+  drawLine(benchmark, '#68727d', 1.4);
+  drawLine(portfolio, '#d4a24c', 2.2);
+
+  const xGuideCount = Math.min(5, Math.max(2, dates.length));
+  for (let i = 0; i < xGuideCount; i++) {
+    const idx = Math.round(i * (dates.length - 1) / Math.max(1, xGuideCount - 1));
+    add('text', {
+      x: x(idx), y: height - 8, 'text-anchor': 'middle',
+      fill: '#69747e', 'font-size': 10, 'font-family': '"IBM Plex Mono", monospace'
+    }, fmtDate(dates[idx]));
+  }
+
+  const host = el('div');
+  host.style.position = 'relative';
+  host.appendChild(svg);
+
+  const tooltip = el('div', { class: 'chart-tooltip' });
+  host.appendChild(tooltip);
+
+  const crosshair = add('line', {
+    y1: pad.top, y2: height - pad.bottom,
+    stroke: 'rgba(232,230,224,.18)', 'stroke-dasharray': '3 3'
+  });
+  crosshair.style.display = 'none';
+
+  const dot = add('circle', { r: 4, fill: '#d4a24c' });
+  dot.style.display = 'none';
+
+  host.addEventListener('mousemove', function(event) {
+    const rect = svg.getBoundingClientRect();
+    const localX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    const ratio = localX / rect.width;
+    const idx = Math.max(0, Math.min(dates.length - 1, Math.round(ratio * (dates.length - 1))));
+    if (portfolio[idx] == null) return;
+
+    const px = x(idx);
+    const py = y(portfolio[idx]);
+    crosshair.setAttribute('x1', px);
+    crosshair.setAttribute('x2', px);
+    crosshair.style.display = 'block';
+    dot.setAttribute('cx', px);
+    dot.setAttribute('cy', py);
+    dot.style.display = 'block';
+
+    const bmValue = benchmark[idx] == null ? '—' :
+      (benchmark[idx] >= 0 ? '+' : '') + benchmark[idx].toFixed(2) + '%';
+    tooltip.innerHTML =
+      '<div class="date">' + fmtDate(dates[idx]) + '</div>' +
+      '<div class="row"><span class="portfolio">Portfolio</span><span class="portfolio">' +
+      (portfolio[idx] >= 0 ? '+' : '') + portfolio[idx].toFixed(2) + '%</span></div>' +
+      '<div class="row"><span class="benchmark">S&amp;P 500</span><span class="benchmark">' +
+      bmValue + '</span></div>';
+
+    tooltip.style.display = 'block';
+    const hostRect = host.getBoundingClientRect();
+    const scaledX = (px / width) * rect.width;
+    const scaledY = (py / height) * rect.height;
+    let tx = scaledX + 12;
+    if (tx + 180 > hostRect.width) tx = scaledX - 192;
+    tooltip.style.left = Math.max(6, tx) + 'px';
+    tooltip.style.top = Math.max(8, scaledY - 54) + 'px';
+  });
+
+  host.addEventListener('mouseleave', function() {
+    tooltip.style.display = 'none';
+    crosshair.style.display = 'none';
+    dot.style.display = 'none';
+  });
+
+  return host;
+}
 function renderPositions(d) {
   const p = d.portfolio || {};
   const positions = p.positions || [];
