@@ -1,34 +1,9 @@
 {
-  "cash": 0.0,
+  "cash": 610.9558449438608,
   "start_capital": 10000.0,
-  "bar_count": 23,
-  "last_run_date": "2026-10-07",
+  "bar_count": 24,
+  "last_run_date": "2026-10-08",
   "positions": [
-    {
-      "trade_id": 1,
-      "ticker": "DELL",
-      "sector": "Information Technology",
-      "name": "Dell Technologies",
-      "shares": 1.074651,
-      "entry_date": "2026-08-25",
-      "entry_price": 443.1115,
-      "cost_basis": 476.19,
-      "entry_bar": 2,
-      "entry_score": 2.9276230672106545,
-      "entry_blocks": {
-        "value": null,
-        "quality": null,
-        "growth": null,
-        "momentum": 2.9276230672106545
-      },
-      "entry_rank": 1,
-      "av_verdict": "confirmed",
-      "last_price": 578.96,
-      "last_value": 622.18,
-      "bars_held": 21,
-      "stale_days": 0,
-      "unrealised_pct": 0.306579
-    },
     {
       "trade_id": 2,
       "ticker": "MU",
@@ -48,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 1088.0,
-      "last_value": 559.88,
-      "bars_held": 20,
+      "last_price": 1037.9301,
+      "last_value": 534.11,
+      "bars_held": 21,
       "stale_days": 0,
-      "unrealised_pct": 0.174688
+      "unrealised_pct": 0.12062
     },
     {
       "trade_id": 3,
@@ -73,11 +48,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1692.42,
-      "last_value": 521.36,
-      "bars_held": 19,
+      "last_price": 1605.8,
+      "last_value": 494.68,
+      "bars_held": 20,
       "stale_days": 0,
-      "unrealised_pct": 0.091739
+      "unrealised_pct": 0.035871
     },
     {
       "trade_id": 4,
@@ -98,11 +73,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 405.42,
-      "last_value": 418.06,
-      "bars_held": 18,
+      "last_price": 393.4,
+      "last_value": 405.66,
+      "bars_held": 19,
       "stale_days": 0,
-      "unrealised_pct": -0.123472
+      "unrealised_pct": -0.149471
     },
     {
       "trade_id": 5,
@@ -123,11 +98,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 424.1,
-      "last_value": 560.44,
-      "bars_held": 17,
+      "last_price": 443.205,
+      "last_value": 585.69,
+      "bars_held": 18,
       "stale_days": 0,
-      "unrealised_pct": 0.177593
+      "unrealised_pct": 0.230648
     },
     {
       "trade_id": 6,
@@ -148,11 +123,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 442.26,
-      "last_value": 553.99,
-      "bars_held": 16,
+      "last_price": 462.24,
+      "last_value": 579.02,
+      "bars_held": 17,
       "stale_days": 0,
-      "unrealised_pct": 0.160869
+      "unrealised_pct": 0.213319
     },
     {
       "trade_id": 7,
@@ -173,11 +148,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 58.21,
-      "last_value": 459.57,
-      "bars_held": 13,
+      "last_price": 60.05,
+      "last_value": 474.1,
+      "bars_held": 14,
       "stale_days": 0,
-      "unrealised_pct": -0.03226
+      "unrealised_pct": -0.001664
     },
     {
       "trade_id": 8,
@@ -201,11 +176,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 271.62,
-      "last_value": 512.05,
-      "bars_held": 13,
+      "last_price": 279.98,
+      "last_value": 527.81,
+      "bars_held": 14,
       "stale_days": 0,
-      "unrealised_pct": 0.07825
+      "unrealised_pct": 0.111436
     },
     {
       "trade_id": 9,
@@ -229,11 +204,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 43.81,
-      "last_value": 476.07,
-      "bars_held": 13,
+      "last_price": 45.72,
+      "last_value": 496.82,
+      "bars_held": 14,
       "stale_days": 0,
-      "unrealised_pct": 0.002485
+      "unrealised_pct": 0.046179
     },
     {
       "trade_id": 10,
@@ -257,11 +232,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 237.47,
-      "last_value": 546.61,
-      "bars_held": 9,
+      "last_price": 230.5,
+      "last_value": 530.57,
+      "bars_held": 10,
       "stale_days": 0,
-      "unrealised_pct": 0.123602
+      "unrealised_pct": 0.090631
     },
     {
       "trade_id": 11,
@@ -285,11 +260,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 360.61,
-      "last_value": 457.81,
-      "bars_held": 9,
+      "last_price": 370.89,
+      "last_value": 470.86,
+      "bars_held": 10,
       "stale_days": 0,
-      "unrealised_pct": -0.058934
+      "unrealised_pct": -0.032108
     },
     {
       "trade_id": 12,
@@ -313,11 +288,11 @@
       },
       "entry_rank": 10,
       "av_verdict": "confirmed",
-      "last_price": 347.37,
-      "last_value": 498.08,
-      "bars_held": 9,
+      "last_price": 343.6,
+      "last_value": 492.67,
+      "bars_held": 10,
       "stale_days": 0,
-      "unrealised_pct": 0.023845
+      "unrealised_pct": 0.012724
     },
     {
       "trade_id": 13,
@@ -341,11 +316,11 @@
       },
       "entry_rank": 9,
       "av_verdict": "confirmed",
-      "last_price": 64.99,
-      "last_value": 469.48,
-      "bars_held": 9,
+      "last_price": 64.76,
+      "last_value": 467.82,
+      "bars_held": 10,
       "stale_days": 0,
-      "unrealised_pct": -0.034945
+      "unrealised_pct": -0.038357
     },
     {
       "trade_id": 14,
@@ -369,11 +344,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 350.5,
-      "last_value": 497.67,
-      "bars_held": 5,
+      "last_price": 346.6525,
+      "last_value": 492.21,
+      "bars_held": 6,
       "stale_days": 0,
-      "unrealised_pct": 0.028244
+      "unrealised_pct": 0.016963
     },
     {
       "trade_id": 15,
@@ -397,11 +372,11 @@
       },
       "entry_rank": 14,
       "av_verdict": "confirmed",
-      "last_price": 223.95,
-      "last_value": 473.75,
-      "bars_held": 5,
+      "last_price": 231.1,
+      "last_value": 488.88,
+      "bars_held": 6,
       "stale_days": 0,
-      "unrealised_pct": -0.021178
+      "unrealised_pct": 0.010083
     },
     {
       "trade_id": 16,
@@ -425,11 +400,11 @@
       },
       "entry_rank": 16,
       "av_verdict": "confirmed",
-      "last_price": 150.92,
-      "last_value": 466.21,
-      "bars_held": 5,
+      "last_price": 155.9025,
+      "last_value": 481.6,
+      "bars_held": 6,
       "stale_days": 0,
-      "unrealised_pct": -0.036756
+      "unrealised_pct": -0.004959
     },
     {
       "trade_id": 17,
@@ -453,11 +428,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 113.44,
-      "last_value": 445.22,
-      "bars_held": 5,
+      "last_price": 113.26,
+      "last_value": 444.51,
+      "bars_held": 6,
       "stale_days": 0,
-      "unrealised_pct": -0.080124
+      "unrealised_pct": -0.081591
     },
     {
       "trade_id": 18,
@@ -481,11 +456,11 @@
       },
       "entry_rank": 17,
       "av_verdict": "confirmed",
-      "last_price": 259.92,
-      "last_value": 502.39,
-      "bars_held": 3,
+      "last_price": 254.08,
+      "last_value": 491.1,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": 0.032513
+      "unrealised_pct": 0.00931
     },
     {
       "trade_id": 19,
@@ -509,11 +484,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 267.76,
-      "last_value": 476.61,
-      "bars_held": 3,
+      "last_price": 261.775,
+      "last_value": 465.96,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": -0.02047
+      "unrealised_pct": -0.042358
     },
     {
       "trade_id": 20,
@@ -537,11 +512,11 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 116.3,
-      "last_value": 502.9,
-      "bars_held": 2,
+      "last_price": 118.97,
+      "last_value": 514.45,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.02641
+      "unrealised_pct": 0.049984
     },
     {
       "trade_id": 21,
@@ -565,20 +540,42 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 222.15,
-      "last_value": 365.76,
-      "bars_held": 1,
+      "last_price": 219.23,
+      "last_value": 360.95,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": -0.011085
+      "unrealised_pct": -0.02409
     }
   ],
   "pending_orders": [
     {
       "side": "SELL",
-      "ticker": "DELL",
-      "trade_id": 1,
+      "ticker": "MU",
+      "trade_id": 2,
       "reason": "hold period elapsed",
       "notional": 0.0
+    },
+    {
+      "side": "BUY",
+      "ticker": "COF",
+      "sector": "Financials",
+      "name": "Capital One",
+      "notional": 495.73,
+      "entry_score": 0.44620741399904584,
+      "rank": 25,
+      "blocks": {
+        "value": 0.5925785231780542,
+        "quality": -0.6549127127071878,
+        "growth": 4.091481883216078,
+        "momentum": -0.4086412004168099,
+        "earnings": 0.672611990278772,
+        "risk": 0.7486189592426963,
+        "technical": 0.4017863659445858
+      },
+      "signal_close": 196.50999450683594,
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "top composite score"
     }
   ],
   "next_trade_id": 22,

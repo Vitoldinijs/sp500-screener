@@ -1,0 +1,2 @@
+trade_id,ticker,name,sector,entry_date,entry_price,exit_date,exit_price,shares,cost_basis,proceeds,pnl,return_pct,bars_held,entry_score,exit_reason,av_verdict
+1,DELL,Dell Technologies,Information Technology,2026-08-25,443.1115,2026-10-08,568.5156,1.074651,476.19,610.96,134.77,0.283009,22,2.9276230672106545,hold period elapsed,confirmed
