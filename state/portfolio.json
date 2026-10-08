@@ -1,8 +1,8 @@
 {
   "cash": 0.0,
   "start_capital": 10000.0,
-  "bar_count": 22,
-  "last_run_date": "2026-10-06",
+  "bar_count": 23,
+  "last_run_date": "2026-10-07",
   "positions": [
     {
       "trade_id": 1,
@@ -23,11 +23,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 574.0,
-      "last_value": 616.85,
-      "bars_held": 20,
+      "last_price": 578.96,
+      "last_value": 622.18,
+      "bars_held": 21,
       "stale_days": 0,
-      "unrealised_pct": 0.295386
+      "unrealised_pct": 0.306579
     },
     {
       "trade_id": 2,
@@ -48,11 +48,11 @@
       },
       "entry_rank": 1,
       "av_verdict": "confirmed",
-      "last_price": 1045.5601,
-      "last_value": 538.04,
-      "bars_held": 19,
+      "last_price": 1088.0,
+      "last_value": 559.88,
+      "bars_held": 20,
       "stale_days": 0,
-      "unrealised_pct": 0.128866
+      "unrealised_pct": 0.174688
     },
     {
       "trade_id": 3,
@@ -73,11 +73,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1660.46,
-      "last_value": 511.52,
-      "bars_held": 18,
+      "last_price": 1692.42,
+      "last_value": 521.36,
+      "bars_held": 19,
       "stale_days": 0,
-      "unrealised_pct": 0.071134
+      "unrealised_pct": 0.091739
     },
     {
       "trade_id": 4,
@@ -98,11 +98,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 411.04,
-      "last_value": 423.85,
-      "bars_held": 17,
+      "last_price": 405.42,
+      "last_value": 418.06,
+      "bars_held": 18,
       "stale_days": 0,
-      "unrealised_pct": -0.111332
+      "unrealised_pct": -0.123472
     },
     {
       "trade_id": 5,
@@ -123,11 +123,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 419.22,
-      "last_value": 553.99,
-      "bars_held": 16,
+      "last_price": 424.1,
+      "last_value": 560.44,
+      "bars_held": 17,
       "stale_days": 0,
-      "unrealised_pct": 0.16404
+      "unrealised_pct": 0.177593
     },
     {
       "trade_id": 6,
@@ -148,11 +148,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 432.36,
-      "last_value": 541.59,
-      "bars_held": 15,
+      "last_price": 442.26,
+      "last_value": 553.99,
+      "bars_held": 16,
       "stale_days": 0,
-      "unrealised_pct": 0.134885
+      "unrealised_pct": 0.160869
     },
     {
       "trade_id": 7,
@@ -173,11 +173,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 58.33,
-      "last_value": 460.52,
-      "bars_held": 12,
+      "last_price": 58.21,
+      "last_value": 459.57,
+      "bars_held": 13,
       "stale_days": 0,
-      "unrealised_pct": -0.03026
+      "unrealised_pct": -0.03226
     },
     {
       "trade_id": 8,
@@ -201,11 +201,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 269.79,
-      "last_value": 508.6,
-      "bars_held": 12,
+      "last_price": 271.62,
+      "last_value": 512.05,
+      "bars_held": 13,
       "stale_days": 0,
-      "unrealised_pct": 0.070985
+      "unrealised_pct": 0.07825
     },
     {
       "trade_id": 9,
@@ -229,11 +229,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 44.1,
-      "last_value": 479.22,
-      "bars_held": 12,
+      "last_price": 43.81,
+      "last_value": 476.07,
+      "bars_held": 13,
       "stale_days": 0,
-      "unrealised_pct": 0.009118
+      "unrealised_pct": 0.002485
     },
     {
       "trade_id": 10,
@@ -257,11 +257,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 239.24,
-      "last_value": 550.69,
-      "bars_held": 8,
+      "last_price": 237.47,
+      "last_value": 546.61,
+      "bars_held": 9,
       "stale_days": 0,
-      "unrealised_pct": 0.131989
+      "unrealised_pct": 0.123602
     },
     {
       "trade_id": 11,
@@ -285,11 +285,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 360.64,
-      "last_value": 457.85,
-      "bars_held": 8,
+      "last_price": 360.61,
+      "last_value": 457.81,
+      "bars_held": 9,
       "stale_days": 0,
-      "unrealised_pct": -0.058851
+      "unrealised_pct": -0.058934
     },
     {
       "trade_id": 12,
@@ -313,11 +313,11 @@
       },
       "entry_rank": 10,
       "av_verdict": "confirmed",
-      "last_price": 344.59,
-      "last_value": 494.09,
-      "bars_held": 8,
+      "last_price": 347.37,
+      "last_value": 498.08,
+      "bars_held": 9,
       "stale_days": 0,
-      "unrealised_pct": 0.015643
+      "unrealised_pct": 0.023845
     },
     {
       "trade_id": 13,
@@ -341,11 +341,11 @@
       },
       "entry_rank": 9,
       "av_verdict": "confirmed",
-      "last_price": 64.61,
-      "last_value": 466.73,
-      "bars_held": 8,
+      "last_price": 64.99,
+      "last_value": 469.48,
+      "bars_held": 9,
       "stale_days": 0,
-      "unrealised_pct": -0.040598
+      "unrealised_pct": -0.034945
     },
     {
       "trade_id": 14,
@@ -369,11 +369,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 347.68,
-      "last_value": 493.67,
-      "bars_held": 4,
+      "last_price": 350.5,
+      "last_value": 497.67,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": 0.019979
+      "unrealised_pct": 0.028244
     },
     {
       "trade_id": 15,
@@ -397,11 +397,11 @@
       },
       "entry_rank": 14,
       "av_verdict": "confirmed",
-      "last_price": 224.27,
-      "last_value": 474.43,
-      "bars_held": 4,
+      "last_price": 223.95,
+      "last_value": 473.75,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": -0.019773
+      "unrealised_pct": -0.021178
     },
     {
       "trade_id": 16,
@@ -425,11 +425,11 @@
       },
       "entry_rank": 16,
       "av_verdict": "confirmed",
-      "last_price": 154.33,
-      "last_value": 476.75,
-      "bars_held": 4,
+      "last_price": 150.92,
+      "last_value": 466.21,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": -0.014979
+      "unrealised_pct": -0.036756
     },
     {
       "trade_id": 17,
@@ -453,11 +453,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 112.73,
-      "last_value": 442.43,
-      "bars_held": 4,
+      "last_price": 113.44,
+      "last_value": 445.22,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": -0.085888
+      "unrealised_pct": -0.080124
     },
     {
       "trade_id": 18,
@@ -481,11 +481,11 @@
       },
       "entry_rank": 17,
       "av_verdict": "confirmed",
-      "last_price": 256.29,
-      "last_value": 495.37,
-      "bars_held": 2,
+      "last_price": 259.92,
+      "last_value": 502.39,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.018086
+      "unrealised_pct": 0.032513
     },
     {
       "trade_id": 19,
@@ -509,11 +509,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 273.54,
-      "last_value": 486.9,
-      "bars_held": 2,
+      "last_price": 267.76,
+      "last_value": 476.61,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": 0.000678
+      "unrealised_pct": -0.02047
     },
     {
       "trade_id": 20,
@@ -537,11 +537,11 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 116.19,
-      "last_value": 502.43,
-      "bars_held": 1,
+      "last_price": 116.3,
+      "last_value": 502.9,
+      "bars_held": 2,
       "stale_days": 0,
-      "unrealised_pct": 0.025451
+      "unrealised_pct": 0.02641
     },
     {
       "trade_id": 21,
@@ -565,14 +565,22 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 222.89,
-      "last_value": 366.98,
-      "bars_held": 0,
+      "last_price": 222.15,
+      "last_value": 365.76,
+      "bars_held": 1,
       "stale_days": 0,
-      "unrealised_pct": -0.007787
+      "unrealised_pct": -0.011085
     }
   ],
-  "pending_orders": [],
+  "pending_orders": [
+    {
+      "side": "SELL",
+      "ticker": "DELL",
+      "trade_id": 1,
+      "reason": "hold period elapsed",
+      "notional": 0.0
+    }
+  ],
   "next_trade_id": 22,
   "version": 2
 }
