@@ -1,34 +1,9 @@
 {
-  "cash": 610.9558449438608,
+  "cash": 657.426297033976,
   "start_capital": 10000.0,
-  "bar_count": 24,
-  "last_run_date": "2026-10-08",
+  "bar_count": 25,
+  "last_run_date": "2026-10-09",
   "positions": [
-    {
-      "trade_id": 2,
-      "ticker": "MU",
-      "sector": "Information Technology",
-      "name": "Micron Technology",
-      "shares": 0.514596,
-      "entry_date": "2026-08-26",
-      "entry_price": 926.2029,
-      "cost_basis": 476.62,
-      "entry_bar": 3,
-      "entry_score": 1.809956883354321,
-      "entry_blocks": {
-        "value": 0.14110516271355572,
-        "quality": 1.6799105003363215,
-        "growth": 4.206596031118561,
-        "momentum": 2.3888610159612993
-      },
-      "entry_rank": 1,
-      "av_verdict": "confirmed",
-      "last_price": 1037.9301,
-      "last_value": 534.11,
-      "bars_held": 21,
-      "stale_days": 0,
-      "unrealised_pct": 0.12062
-    },
     {
       "trade_id": 3,
       "ticker": "SNDK",
@@ -48,11 +23,11 @@
       },
       "entry_rank": 2,
       "av_verdict": "confirmed",
-      "last_price": 1605.8,
-      "last_value": 494.68,
-      "bars_held": 20,
+      "last_price": 1581.8199,
+      "last_value": 487.29,
+      "bars_held": 21,
       "stale_days": 0,
-      "unrealised_pct": 0.035871
+      "unrealised_pct": 0.020396
     },
     {
       "trade_id": 4,
@@ -73,11 +48,11 @@
       },
       "entry_rank": 3,
       "av_verdict": "confirmed",
-      "last_price": 393.4,
-      "last_value": 405.66,
-      "bars_held": 19,
+      "last_price": 397.28,
+      "last_value": 409.66,
+      "bars_held": 20,
       "stale_days": 0,
-      "unrealised_pct": -0.149471
+      "unrealised_pct": -0.141084
     },
     {
       "trade_id": 5,
@@ -98,11 +73,11 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 443.205,
-      "last_value": 585.69,
-      "bars_held": 18,
+      "last_price": 433.75,
+      "last_value": 573.19,
+      "bars_held": 19,
       "stale_days": 0,
-      "unrealised_pct": 0.230648
+      "unrealised_pct": 0.204383
     },
     {
       "trade_id": 6,
@@ -123,11 +98,11 @@
       },
       "entry_rank": 6,
       "av_verdict": "confirmed",
-      "last_price": 462.24,
-      "last_value": 579.02,
-      "bars_held": 17,
+      "last_price": 455.03,
+      "last_value": 569.99,
+      "bars_held": 18,
       "stale_days": 0,
-      "unrealised_pct": 0.213319
+      "unrealised_pct": 0.194397
     },
     {
       "trade_id": 7,
@@ -148,11 +123,11 @@
       },
       "entry_rank": 7,
       "av_verdict": "confirmed",
-      "last_price": 60.05,
-      "last_value": 474.1,
-      "bars_held": 14,
+      "last_price": 60.11,
+      "last_value": 474.57,
+      "bars_held": 15,
       "stale_days": 0,
-      "unrealised_pct": -0.001664
+      "unrealised_pct": -0.000674
     },
     {
       "trade_id": 8,
@@ -176,11 +151,11 @@
       },
       "entry_rank": 5,
       "av_verdict": "confirmed",
-      "last_price": 279.98,
-      "last_value": 527.81,
-      "bars_held": 14,
+      "last_price": 278.18,
+      "last_value": 524.42,
+      "bars_held": 15,
       "stale_days": 0,
-      "unrealised_pct": 0.111436
+      "unrealised_pct": 0.104298
     },
     {
       "trade_id": 9,
@@ -204,11 +179,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 45.72,
-      "last_value": 496.82,
-      "bars_held": 14,
+      "last_price": 45.88,
+      "last_value": 498.56,
+      "bars_held": 15,
       "stale_days": 0,
-      "unrealised_pct": 0.046179
+      "unrealised_pct": 0.049843
     },
     {
       "trade_id": 10,
@@ -232,11 +207,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 230.5,
-      "last_value": 530.57,
-      "bars_held": 10,
+      "last_price": 229.28,
+      "last_value": 527.76,
+      "bars_held": 11,
       "stale_days": 0,
-      "unrealised_pct": 0.090631
+      "unrealised_pct": 0.084854
     },
     {
       "trade_id": 11,
@@ -260,11 +235,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 370.89,
-      "last_value": 470.86,
-      "bars_held": 10,
+      "last_price": 368.75,
+      "last_value": 468.15,
+      "bars_held": 11,
       "stale_days": 0,
-      "unrealised_pct": -0.032108
+      "unrealised_pct": -0.037679
     },
     {
       "trade_id": 12,
@@ -288,11 +263,11 @@
       },
       "entry_rank": 10,
       "av_verdict": "confirmed",
-      "last_price": 343.6,
-      "last_value": 492.67,
-      "bars_held": 10,
+      "last_price": 347.86,
+      "last_value": 498.78,
+      "bars_held": 11,
       "stale_days": 0,
-      "unrealised_pct": 0.012724
+      "unrealised_pct": 0.025284
     },
     {
       "trade_id": 13,
@@ -316,11 +291,11 @@
       },
       "entry_rank": 9,
       "av_verdict": "confirmed",
-      "last_price": 64.76,
-      "last_value": 467.82,
-      "bars_held": 10,
+      "last_price": 65.36,
+      "last_value": 472.15,
+      "bars_held": 11,
       "stale_days": 0,
-      "unrealised_pct": -0.038357
+      "unrealised_pct": -0.029457
     },
     {
       "trade_id": 14,
@@ -344,11 +319,11 @@
       },
       "entry_rank": 8,
       "av_verdict": "confirmed",
-      "last_price": 346.6525,
-      "last_value": 492.21,
-      "bars_held": 6,
+      "last_price": 351.66,
+      "last_value": 499.32,
+      "bars_held": 7,
       "stale_days": 0,
-      "unrealised_pct": 0.016963
+      "unrealised_pct": 0.031653
     },
     {
       "trade_id": 15,
@@ -372,11 +347,11 @@
       },
       "entry_rank": 14,
       "av_verdict": "confirmed",
-      "last_price": 231.1,
-      "last_value": 488.88,
-      "bars_held": 6,
+      "last_price": 229.43,
+      "last_value": 485.34,
+      "bars_held": 7,
       "stale_days": 0,
-      "unrealised_pct": 0.010083
+      "unrealised_pct": 0.002769
     },
     {
       "trade_id": 16,
@@ -400,11 +375,11 @@
       },
       "entry_rank": 16,
       "av_verdict": "confirmed",
-      "last_price": 155.9025,
-      "last_value": 481.6,
-      "bars_held": 6,
+      "last_price": 153.64,
+      "last_value": 474.61,
+      "bars_held": 7,
       "stale_days": 0,
-      "unrealised_pct": -0.004959
+      "unrealised_pct": -0.019401
     },
     {
       "trade_id": 17,
@@ -428,11 +403,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 113.26,
-      "last_value": 444.51,
-      "bars_held": 6,
+      "last_price": 112.79,
+      "last_value": 442.67,
+      "bars_held": 7,
       "stale_days": 0,
-      "unrealised_pct": -0.081591
+      "unrealised_pct": -0.085393
     },
     {
       "trade_id": 18,
@@ -456,11 +431,11 @@
       },
       "entry_rank": 17,
       "av_verdict": "confirmed",
-      "last_price": 254.08,
-      "last_value": 491.1,
-      "bars_held": 4,
+      "last_price": 262.43,
+      "last_value": 507.24,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": 0.00931
+      "unrealised_pct": 0.042481
     },
     {
       "trade_id": 19,
@@ -484,11 +459,11 @@
       },
       "entry_rank": 18,
       "av_verdict": "confirmed",
-      "last_price": 261.775,
-      "last_value": 465.96,
-      "bars_held": 4,
+      "last_price": 278.17,
+      "last_value": 495.14,
+      "bars_held": 5,
       "stale_days": 0,
-      "unrealised_pct": -0.042358
+      "unrealised_pct": 0.017613
     },
     {
       "trade_id": 20,
@@ -512,11 +487,11 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 118.97,
-      "last_value": 514.45,
-      "bars_held": 3,
+      "last_price": 118.64,
+      "last_value": 513.02,
+      "bars_held": 4,
       "stale_days": 0,
-      "unrealised_pct": 0.049984
+      "unrealised_pct": 0.047065
     },
     {
       "trade_id": 21,
@@ -540,30 +515,24 @@
       },
       "entry_rank": 21,
       "av_verdict": "confirmed",
-      "last_price": 219.23,
-      "last_value": 360.95,
-      "bars_held": 2,
+      "last_price": 225.71,
+      "last_value": 371.62,
+      "bars_held": 3,
       "stale_days": 0,
-      "unrealised_pct": -0.02409
-    }
-  ],
-  "pending_orders": [
-    {
-      "side": "SELL",
-      "ticker": "MU",
-      "trade_id": 2,
-      "reason": "hold period elapsed",
-      "notional": 0.0
+      "unrealised_pct": 0.004759
     },
     {
-      "side": "BUY",
+      "trade_id": 22,
       "ticker": "COF",
       "sector": "Financials",
       "name": "Capital One",
-      "notional": 495.73,
+      "shares": 2.49475,
+      "entry_date": "2026-10-09",
+      "entry_price": 198.7093,
+      "cost_basis": 495.73,
+      "entry_bar": 25,
       "entry_score": 0.44620741399904584,
-      "rank": 25,
-      "blocks": {
+      "entry_blocks": {
         "value": 0.5925785231780542,
         "quality": -0.6549127127071878,
         "growth": 4.091481883216078,
@@ -572,12 +541,46 @@
         "risk": 0.7486189592426963,
         "technical": 0.4017863659445858
       },
-      "signal_close": 196.50999450683594,
+      "entry_rank": 25,
+      "av_verdict": "confirmed",
+      "last_price": 199.26,
+      "last_value": 497.1,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": 0.002764
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "SELL",
+      "ticker": "SNDK",
+      "trade_id": 3,
+      "reason": "hold period elapsed",
+      "notional": 0.0
+    },
+    {
+      "side": "BUY",
+      "ticker": "HPE",
+      "sector": "Information Technology",
+      "name": "Hewlett Packard Enterprise",
+      "notional": 497.52,
+      "entry_score": 1.0536112764864434,
+      "rank": 3,
+      "blocks": {
+        "value": 0.247981045924682,
+        "quality": -0.5336598621172458,
+        "growth": 2.2342757760600502,
+        "momentum": 2.90279648766909,
+        "earnings": null,
+        "risk": -1.8945933166315454,
+        "technical": -0.15830014910565704
+      },
+      "signal_close": 73.45999908447266,
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "top composite score"
     }
   ],
-  "next_trade_id": 22,
+  "next_trade_id": 23,
   "version": 2
 }
