@@ -8,7 +8,8 @@ strategy:
   name: "ladder-momentum-value"
   start_capital: 10000.0        # virtual USD
   n_slots: 21                   # target number of simultaneous positions
-  hold_days: 21                 # trading days to hold each position
+  exit_rank_percentile_below: 0.35  # signal is weak below this relative-score percentile
+  exit_confirmation_observations: 3  # consecutive reviews needed before a signal-based exit
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
   max_positions_per_sector: 5   # soft diversification cap (of n_slots)
@@ -98,11 +99,11 @@ winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
 # ---- Self-learning ---------------------------------------------------------
 learning:
-  enabled: true
-  mode: "auto_bounded"          # auto_bounded | propose_pr | off
+  enabled: false                # paused until event-driven outcomes are mature
+  mode: "off"                    # no fixed forward-return horizon is used for learning
   weight_min: 0.05              # no block weight may fall below this
   weight_max: 0.50              # ...or exceed this
-  max_step_per_month: 0.05      # weights move at most this much per run
+  max_step_per_month: 0.05      # retained for future event-based learner
   lookback_months: 18           # walk-forward training window
   validation_months: 3          # out-of-sample check window
   min_trades_for_update: 40     # need this many closed trades before tuning
@@ -127,7 +128,8 @@ paths:
   trades_csv: "state/trades.csv"                  # committed: closed trades
   equity_csv: "state/equity_curve.csv"            # committed: daily equity
   screen_csv: "state/last_screen.csv"             # committed: today's ranking
-  factor_history_csv: "state/factor_history.csv"  # committed: scores + fwd rets
+  factor_history_csv: "state/factor_history.csv"  # legacy path; not used for fixed-horizon labels
+  decision_history_csv: "state/decision_history.csv" # daily scores, actions and realized lifecycle outcomes
   fundamentals_csv: "state/fundamentals.csv"      # committed weekly -> PIT hist
   weights_history: "state/weights_history.csv"    # committed: learning log
   run_log: "state/run_log.csv"                    # committed: one row per run
