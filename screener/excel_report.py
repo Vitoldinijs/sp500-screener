@@ -184,12 +184,11 @@ def _sheet_data(wb, st, positions, price_history):
 def _sheet_positions(wb, st, positions, cfg, has_data_sheet, price_history=None):
     ws = wb.add_worksheet(SH_POS)
     ws.hide_gridlines(2)
-    hold = int(cfg.strategy["hold_days"])
-
     ws.write(0, 0, "Открытые позиции", st.title)
-    ws.write(1, 0, f"Лестница: одна покупка в день, холд {hold} торговых дней. "
-                   "Жёлтая колонка «Тек. цена» — единственное, что нужно править вручную; "
-                   "остальное пересчитается формулами.", st.subtitle)
+    ws.write(1, 0, "Позиции удерживаются, пока сохраняется инвестиционный сигнал; "
+                   "автоматического выхода по сроку нет. Жёлтая колонка «Тек. цена» — "
+                   "единственное, что нужно править вручную; остальное пересчитается формулами.",
+             st.subtitle)
 
     headers = ["Тикер", "Компания", "Сектор", "Дата входа", "Цена входа", "Акций",
                "Вложено", "Тек. цена", "Стоимость", "P&L $", "P&L %",
@@ -255,9 +254,6 @@ def _sheet_positions(wb, st, positions, cfg, has_data_sheet, price_history=None)
             "type": "3_color_scale", "min_color": "#F8B4B4",
             "mid_color": "#FFFFFF", "max_color": "#A7E8C0",
         })
-        ws.conditional_format(hrow + 1, 12, r - 1, 12, {
-            "type": "data_bar", "bar_color": "#9FB3C8", "bar_solid": True,
-        })
         ws.autofilter(hrow, 0, r - 1, len(headers) - 1)
     else:
         ws.write(hrow + 1, 0, "Пока нет открытых позиций — лестница только "
@@ -272,8 +268,8 @@ def _sheet_trades(wb, st, trades: pd.DataFrame):
     ws = wb.add_worksheet(SH_TRADES)
     ws.hide_gridlines(2)
     ws.write(0, 0, "Закрытые сделки", st.title)
-    ws.write(1, 0, "Полный журнал. Каждая позиция закрывается по истечении "
-                   "срока удержания, по цене открытия следующей сессии.", st.subtitle)
+    ws.write(1, 0, "Полный журнал сделок. Выход инициируется правилами сигнала и "
+                   "исполняется по цене открытия следующей доступной сессии.", st.subtitle)
 
     headers = ["#", "Тикер", "Сектор", "Вход", "Цена входа", "Выход",
                "Цена выхода", "Акций", "Вложено", "Получено", "P&L $", "P&L %",
@@ -284,8 +280,8 @@ def _sheet_trades(wb, st, trades: pd.DataFrame):
     ws.freeze_panes(hrow + 1, 0)
 
     if trades is None or trades.empty:
-        ws.write(hrow + 1, 0, "Сделок ещё нет — первая закроется примерно через "
-                              "месяц после старта.", st.note)
+        ws.write(hrow + 1, 0, "Закрытых сделок пока нет. Позиции закрываются по сигналу, "
+                              "а не по заранее заданному сроку.", st.note)
         return ws
 
     df = trades.copy()
@@ -584,7 +580,7 @@ def _sheet_dashboard(wb, st, state, stats, meta, cfg, n_pos, equity, positions):
         ("Слотов всего", cfg.strategy["n_slots"], st.int_),
         ("Слотов свободно", state.open_slots(int(cfg.strategy["n_slots"])), st.int_),
         ("Ордеров в очереди", len(state.pending_orders), st.int_),
-        ("Срок удержания, дней", cfg.strategy["hold_days"], st.int_),
+        ("Правило выхода", "Ослабление сигнала", st.text),
         ("Средний срок сделки, дней", stats.get("avg_hold"), st.num),
         ("Средняя прибыль сделки", stats.get("avg_win"), st.pct2),
         ("Средний убыток сделки", stats.get("avg_loss"), st.pct2),
