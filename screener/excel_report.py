@@ -452,9 +452,9 @@ def _sheet_factors(wb, st, cfg, meta):
     ws = wb.add_worksheet(SH_FACT)
     ws.hide_gridlines(2)
     ws.write(0, 0, "Факторы и самообучение", st.title)
-    ws.write(1, 0, "Веса блоков подстраиваются раз в месяц по прогнозной силе "
-                   "на истории, в узких границах и с откатом при ухудшении.",
-             st.subtitle)
+    ws.write(1, 0, "Обучение весов временно отключено. Оно будет возвращено после "
+                   "реализации оценки завершённых жизненных циклов сигналов без "
+                   "фиксированных горизонтов доходности.", st.subtitle)
 
     ws.write(3, 0, "Текущие веса блоков", st.section)
     _table_header(ws, st, 4, ["Блок", "Вес", "Метрики внутри блока"], [16, 10, 74])
@@ -484,9 +484,8 @@ def _sheet_factors(wb, st, cfg, meta):
         log = pd.DataFrame()
 
     if log.empty:
-        ws.write(r, 0, "Пока пусто. Подстройка включится после "
-                       f"{cfg.learning['min_trades_for_update']} закрытых сделок "
-                       "и накопления истории.", st.note)
+        ws.write(r, 0, "Журнал пока пуст. Изменение весов отключено до реализации "
+                       "и проверки жизненно-цикловой оценки сигналов.", st.note)
     else:
         cols = [c for c in ["run_date", "decision", "reason", "ic_value",
                             "ic_quality", "ic_growth", "ic_momentum",
