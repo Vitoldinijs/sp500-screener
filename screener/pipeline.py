@@ -153,6 +153,7 @@ def run_daily(cfg: Config, allow_network: bool = True,
             bar, data_date.date(),
             shortlist=[chosen] if chosen else [],
             name_map=name_map,
+            scored=scored,
         )
         for e in summary["events"]:
             _log(f"  {e}")
@@ -200,6 +201,7 @@ def run_daily(cfg: Config, allow_network: bool = True,
     if build_report:
         _build_report(cfg, state, scored, meta, close_wide)
     _append_run_log(cfg, meta, state)
+    _append_decision_history(cfg, scored, state, data_date, chosen, shortlist, meta)
     return meta
 
 
@@ -228,6 +230,110 @@ def _append_run_log(cfg: Config, meta: dict, state) -> None:
            "cash": round(state.cash, 2), "positions": len(state.positions)}
     path = cfg.path("run_log")
     pd.DataFrame([row]).to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
+                            data_date: pd.Timestamp, chosen: dict | None,
+                            shortlist: list[dict], meta: dict) -> None:
+    """Append one auditable record per ticker and data date.
+
+    This is a decision ledger, not a fixed-horizon return label. Later runs
+    append new observations; lifecycle results can be joined by signal_id and
+    trade_id when a position actually closes.
+    """
+    path = cfg.path("decision_history_csv")
+    existing = _load_csv(path)
+    if scored.empty:
+        return
+
+    positions = {p.get("ticker"): p for p in state.positions}
+    pending = {
+        o.get("ticker"): o for o in state.pending_orders
+        if o.get("side") in {"BUY", "SELL"}
+    }
+    shortlist_by_ticker = {x.get("ticker"): x for x in shortlist}
+    chosen_ticker = chosen.get("ticker") if chosen else None
+    eligible_count = int(scored.get("eligible", pd.Series(False, index=scored.index)).fillna(False).sum())
+    records = []
+
+    for ticker, row in scored.iterrows():
+        block_values = {
+            b: (None if pd.isna(row.get(f"block_{b}")) else float(row[f"block_{b}"]))
+            for b in cfg["metric_blocks"]
+        }
+        present = [v for v in block_values.values() if v is not None]
+        agreement = (
+            sum(v > 0 for v in present) / len(present) if present else None
+        )
+        p = positions.get(ticker)
+        order = pending.get(ticker)
+        records.append({
+            "data_date": data_date.strftime("%Y-%m-%d"),
+            "ticker": str(ticker),
+            "signal_id": f"{data_date.strftime('%Y-%m-%d')}:{ticker}",
+            "name": row.get("name"),
+            "sector": row.get("sector"),
+            "last_close": _safe_float(row.get("last_close")),
+            "eligible": bool(row.get("eligible", False)),
+            "exclude_reason": row.get("exclude_reason", ""),
+            "rank": _safe_float(row.get("rank")),
+            "rank_percentile": (
+                round((eligible_count - float(row["rank"])) / (eligible_count - 1), 6)
+                if eligible_count > 1 and pd.notna(row.get("rank")) and bool(row.get("eligible", False))
+                else (1.0 if eligible_count == 1 and bool(row.get("eligible", False)) else None)
+            ),
+            "composite": _safe_float(row.get("composite")),
+            "blocks_used": _safe_float(row.get("blocks_used")),
+            "factor_agreement_positive_share": agreement,
+            "fundamental_coverage": (
+                _safe_float(1 - float(row.get("missing_fundamentals", 0)) /
+                            max(1, sum(len(cfg["metric_blocks"].get(b, []))
+                                       for b in ("value", "quality", "growth", "earnings"))))
+            ),
+            **{f"block_{k}": v for k, v in block_values.items()},
+            "is_chosen_candidate": ticker == chosen_ticker,
+            "shortlisted": ticker in shortlist_by_ticker,
+            "portfolio_action": (
+                order.get("side") if order else
+                ("HOLD_REVIEW" if p else ("BUY_CANDIDATE" if ticker in shortlist_by_ticker else "NO_ACTION"))
+            ),
+            "action_reason": (
+                order.get("reason") if order else
+                ("top eligible candidate after verification" if ticker == chosen_ticker else
+                 row.get("exclude_reason", "") if not bool(row.get("eligible", False)) else "")
+            ),
+            "is_held": p is not None,
+            "entry_date": p.get("entry_date") if p else None,
+            "entry_price": _safe_float(p.get("entry_price")) if p else None,
+            "cost_basis": _safe_float(p.get("cost_basis")) if p else None,
+            "unrealised_pct": _safe_float(p.get("unrealised_pct")) if p else None,
+            "bars_held_observed": _safe_float(p.get("bars_held")) if p else None,
+            "last_signal_review": p.get("last_signal_review") if p else None,
+            "forecast_confidence": None,
+            "confidence_status": "uncalibrated",
+            "portfolio_equity": round(state.equity(), 2),
+            "portfolio_cash": round(state.cash, 2),
+            "portfolio_positions": len(state.positions),
+            "price_provider": meta.get("price_provider"),
+            "fundamentals_asof": meta.get("fundamentals_asof"),
+        })
+
+    fresh = pd.DataFrame(records)
+    if not existing.empty and {"data_date", "ticker"}.issubset(existing.columns):
+        keys = set(zip(existing["data_date"].astype(str), existing["ticker"].astype(str)))
+        fresh = fresh[
+            ~fresh.apply(lambda r: (str(r["data_date"]), str(r["ticker"])) in keys, axis=1)
+        ]
+    if not fresh.empty:
+        fresh.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def _safe_float(value):
+    try:
+        out = float(value)
+        return out if np.isfinite(out) else None
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
