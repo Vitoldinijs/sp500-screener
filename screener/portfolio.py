@@ -109,7 +109,8 @@ class Ladder:
         self.s = state
         st = cfg.strategy
         self.n_slots = int(st["n_slots"])
-        self.hold_days = int(st["hold_days"])
+        self.exit_rank_floor = float(st.get("exit_rank_percentile_below", 0.35))
+        self.exit_confirmation = max(1, int(st.get("exit_confirmation_observations", 3)))
         self.slip = float(st.get("slippage_bps", 0.0)) / 10_000.0
         self.commission = float(st.get("commission_per_trade", 0.0))
         self.fractional = bool(st.get("fractional_shares", True))
@@ -183,6 +184,8 @@ class Ladder:
             "cost_basis": round(cost, 2),
             "entry_bar": self.s.bar_count,
             "entry_score": order.get("entry_score"),
+            "signal_date": order.get("signal_date"),
+            "signal_id": order.get("signal_id"),
             "entry_blocks": order.get("blocks"),
             "entry_rank": order.get("rank"),
             "av_verdict": order.get("av_verdict", "unverified"),
@@ -223,12 +226,14 @@ class Ladder:
             "return_pct": round(ret, 6),
             "bars_held": self.s.bar_count - pos["entry_bar"],
             "entry_score": pos.get("entry_score"),
-            "exit_reason": order.get("reason", "hold period elapsed"),
+            "signal_date": pos.get("signal_date"),
+            "signal_id": pos.get("signal_id"),
+            "exit_reason": order.get("reason", "signal weakened"),
             "av_verdict": pos.get("av_verdict", "unverified"),
         })
         self.s.positions = [p for p in self.s.positions if p["trade_id"] != tid]
         return {"event": "sold", "ticker": pos["ticker"], "price": fill,
-                "pnl": pnl, "trade_id": tid}
+                "pnl": pnl, "trade_id": tid, "reason": order.get("reason", "signal weakened")}
 
     # -- step 2: mark to market -------------------------------------------
     def mark_to_market(self, bar: pd.DataFrame) -> None:
@@ -248,20 +253,76 @@ class Ladder:
                 )
 
     # -- step 3: queue exits ----------------------------------------------
-    def schedule_exits(self) -> list[dict]:
+    def schedule_exits(self, scored: pd.DataFrame | None = None) -> list[dict]:
+        """Queue exits when the stock's cross-sectional signal stays weak.
+
+        No maximum holding-period timer is used. Weakness is measured by
+        rank percentile within the currently eligible universe and confirmed
+        across consecutive daily reviews to avoid a one-day ranking fluctuation.
+        """
         queued = []
         pending_sell_ids = {o.get("trade_id") for o in self.s.pending_orders
                             if o["side"] == "SELL"}
+        if scored is not None and not scored.empty:
+            eligible_mask = (
+                scored.get("eligible", pd.Series(False, index=scored.index))
+                .fillna(False).astype(bool)
+                & pd.to_numeric(
+                    scored.get("composite", pd.Series(np.nan, index=scored.index)),
+                    errors="coerce",
+                ).notna()
+            )
+            eligible_count = int(eligible_mask.sum())
+        else:
+            eligible_count = 0
+
         for p in self.s.positions:
             if p["trade_id"] in pending_sell_ids:
                 continue
+
             reason = None
-            if p["bars_held"] >= self.hold_days:
-                reason = "hold period elapsed"
-            elif int(p.get("stale_days", 0)) >= 5:
+            ticker = p["ticker"]
+            if int(p.get("stale_days", 0)) >= 5:
                 reason = "price data lost for 5 sessions"
+            elif scored is not None and ticker in scored.index:
+                row = scored.loc[ticker]
+                eligible = bool(row.get("eligible", False)) if pd.notna(row.get("eligible", False)) else False
+                rank = pd.to_numeric(pd.Series([row.get("rank")]), errors="coerce").iloc[0]
+                if not eligible:
+                    weak = True
+                    review_detail = str(row.get("exclude_reason") or "screen eligibility lost")
+                    rank_pct = None
+                elif pd.notna(rank) and eligible_count > 1:
+                    rank_pct = float((eligible_count - float(rank)) / (eligible_count - 1))
+                    weak = rank_pct < self.exit_rank_floor
+                    review_detail = (
+                        f"rank percentile {rank_pct:.0%} below threshold {self.exit_rank_floor:.0%}"
+                        if weak else f"rank percentile {rank_pct:.0%} remains acceptable"
+                    )
+                elif eligible and pd.notna(rank):
+                    rank_pct = 1.0
+                    weak = False
+                    review_detail = "only one eligible stock; signal retained"
+                else:
+                    rank_pct = None
+                    weak = False
+                    review_detail = "rank unavailable; no exit decision"
+                p["last_composite"] = (
+                    float(row["composite"]) if pd.notna(row.get("composite")) else None
+                )
+                p["last_rank_percentile"] = rank_pct
+                if weak:
+                    p["weak_signal_runs"] = int(p.get("weak_signal_runs", 0)) + 1
+                else:
+                    p["weak_signal_runs"] = 0
+                p["last_signal_review"] = review_detail
+                if weak and p["weak_signal_runs"] >= self.exit_confirmation:
+                    reason = (
+                        f"signal weakened for {p['weak_signal_runs']} consecutive reviews: "
+                        f"{review_detail}"
+                    )
             if reason:
-                order = {"side": "SELL", "ticker": p["ticker"],
+                order = {"side": "SELL", "ticker": ticker,
                          "trade_id": p["trade_id"], "reason": reason,
                          "notional": 0.0}
                 self.s.pending_orders.append(order)
@@ -269,7 +330,8 @@ class Ladder:
         return queued
 
     # -- step 4: queue the entry ------------------------------------------
-    def schedule_entry(self, shortlist: list[dict], name_map: dict | None = None) -> dict | None:
+    def schedule_entry(self, shortlist: list[dict], name_map: dict | None = None,
+                       signal_date: date | None = None) -> dict | None:
         """Queue one BUY for the top shortlisted candidate, if a slot is free."""
         if self.s.open_slots(self.n_slots) <= 0 or not shortlist:
             return None
@@ -290,6 +352,8 @@ class Ladder:
             "rank": pick.get("rank"),
             "blocks": pick.get("blocks"),
             "signal_close": pick.get("last_close"),
+            "signal_date": signal_date.isoformat() if signal_date else None,
+            "signal_id": f"{signal_date.isoformat()}:{pick['ticker']}" if signal_date else None,
             "av_verdict": pick.get("av_verdict", "unverified"),
             "av_reason": pick.get("av_reason", ""),
             "reason": "top composite score",
@@ -304,13 +368,14 @@ class Ladder:
         trade_date: date,
         shortlist: list[dict] | None = None,
         name_map: dict | None = None,
+        scored: pd.DataFrame | None = None,
     ) -> dict:
         """Process one trading day. `bar` = today's open/close indexed by ticker."""
         self.s.bar_count += 1
         events = self.fill_pending(bar, trade_date)
         self.mark_to_market(bar)
-        exits = self.schedule_exits()
-        entry = self.schedule_entry(shortlist or [], name_map)
+        exits = self.schedule_exits(scored)
+        entry = self.schedule_entry(shortlist or [], name_map, signal_date=trade_date)
         self.s.last_run_date = trade_date.isoformat()
         return {
             "date": trade_date.isoformat(),
