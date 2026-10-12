@@ -8,10 +8,10 @@ would have looked* on a grid of past dates, using only data available then:
   * price factors   <- the cached OHLCV history, truncated at that date
   * fundamentals    <- the newest weekly snapshot dated on/before that date
 
-For each past date it then measures the **information coefficient** (Spearman
-rank correlation) between each factor block's score and the realised forward
-21-day return. Blocks that ranked stocks well get more weight, blocks that
-didn't get less.
+The former implementation used a fixed forward-return target. It is now
+disabled and removed; the replacement will evaluate complete position
+lifecycles from actual signal and execution records. No fixed target horizon
+is used for learning.
 
 Guardrails, because factor timing is notoriously easy to overfit:
   * weights move at most ``max_step_per_month`` (0.05) per run
@@ -33,12 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import factors as fmod
-from . import scoring as smod
-from .data import fundamentals as fund_mod
 
-FWD_HORIZON = 21          # trading days, matches the holding period
-GRID_STEP = 5             # evaluate every 5th trading day
 # Must stay in sync with config.yml's `metric_blocks` keys — this list drives
 # both the walk-forward IC evaluation below AND what `propose_weights` writes
 # back into config.yml's `factor_weights` (see Config.save_weights, which
@@ -70,61 +65,16 @@ def build_panel(
     universe: pd.DataFrame,
     fundamentals_path: Path,
     cfg,
-    grid_step: int = GRID_STEP,
+    grid_step: int = 5,
     max_dates: int = 200,
 ) -> tuple[pd.DataFrame, list[dict]]:
-    """Reconstruct historical block scores + forward returns.
+    """No fixed-horizon target is generated.
 
-    Returns (ic_frame, snapshots) where ic_frame is one row per evaluation
-    date with the IC of each block, and snapshots holds the per-date scoring
-    tables needed to compare candidate weight sets.
+    The previous implementation labelled every stock with an arbitrary
+    forward return. That method is intentionally removed. The next learner
+    will evaluate completed signal lifecycles using actual entry/exit events.
     """
-    from .data import prices as pmod
-
-    close = pmod.to_wide(prices_long, "close")
-    volume = pmod.to_wide(prices_long, "volume")
-    if close.empty or len(close) < 260 + FWD_HORIZON:
-        return pd.DataFrame(), []
-
-    dates = list(close.index)
-    # need >=252 bars of history behind and FWD_HORIZON ahead
-    usable = dates[252 : len(dates) - FWD_HORIZON]
-    grid = usable[::grid_step][-max_dates:]
-
-    ic_rows, snapshots = [], []
-    for d in grid:
-        fund = fund_mod.latest_asof(fundamentals_path, on_or_before=d.date())
-        metrics = fmod.build_metrics(prices_long, fund, universe, asof=d)
-        if metrics.empty:
-            continue
-        scored = smod.score(metrics, cfg)
-        pool = scored[scored["eligible"] & scored["composite"].notna()]
-        if len(pool) < 20:
-            continue
-
-        fwd = fmod.forward_return(close, d, FWD_HORIZON)
-        if fwd.empty:
-            continue
-
-        row = {"date": d.date().isoformat(), "n": int(len(pool)),
-               "fund_asof": (fund["asof"].iloc[0] if not fund.empty and "asof" in fund else None)}
-        block_cols = {}
-        for b in BLOCKS:
-            col = f"block_{b}"
-            if col in pool.columns:
-                row[f"ic_{b}"] = spearman(pool[col], fwd.reindex(pool.index))
-                row[f"cov_{b}"] = float(pool[col].notna().mean())
-                block_cols[b] = pool[col]
-            else:
-                row[f"ic_{b}"] = np.nan
-                row[f"cov_{b}"] = 0.0
-        ic_rows.append(row)
-
-        snap = pd.DataFrame(block_cols)
-        snap["fwd"] = fwd.reindex(snap.index)
-        snapshots.append({"date": d, "table": snap})
-
-    return pd.DataFrame(ic_rows), snapshots
+    return pd.DataFrame(), []
 
 
 def evaluate_weights(snapshots: list[dict], weights: dict, top_n: int = 1) -> dict:
@@ -252,94 +202,20 @@ def _coverage_confidence(ic_frame: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------------------
 def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
                  dry_run: bool = False) -> dict:
-    """Full monthly learning cycle. Returns a decision record."""
-    L = cfg.learning
-    rec: dict = {
+    """Learning is paused until completed lifecycle outcomes can be evaluated.
+
+    Do not fall back to forward returns at fixed day counts. Weight changes
+    require a separate event-driven evaluation design and validation.
+    """
+    current = json.dumps(cfg.weights)
+    return {
         "run_date": date.today().isoformat(),
-        "mode": L.get("mode", "auto_bounded"),
+        "mode": "off",
         "decision": "skipped",
-        "reason": "",
-        "weights_before": json.dumps(cfg.weights),
-        "weights_after": json.dumps(cfg.weights),
+        "reason": "learning disabled pending lifecycle-based evaluation; fixed-horizon targets are not used",
+        "weights_before": current,
+        "weights_after": current,
     }
-    if not L.get("enabled", False) or L.get("mode") == "off":
-        rec["reason"] = "learning disabled in config"
-        return rec
-
-    trades_path = cfg.path("trades_csv")
-    n_trades = 0
-    if trades_path.exists():
-        try:
-            n_trades = int(len(pd.read_csv(trades_path)))
-        except Exception:  # noqa: BLE001
-            n_trades = 0
-    if n_trades < int(L["min_trades_for_update"]):
-        rec["reason"] = (f"only {n_trades} closed trades, need "
-                         f"{L['min_trades_for_update']} before tuning")
-        rec["n_trades"] = n_trades
-        return rec
-
-    ic_frame, snapshots = build_panel(
-        prices_long, universe, cfg.path("fundamentals_csv"), cfg
-    )
-    if ic_frame.empty or len(snapshots) < 12:
-        rec["reason"] = "not enough reconstructable history yet"
-        return rec
-
-    # train / validation split by date
-    n_val = max(3, int(len(snapshots) * 0.25))
-    train_ic = ic_frame.iloc[:-n_val] if len(ic_frame) > n_val else ic_frame
-    train_snaps, val_snaps = snapshots[:-n_val], snapshots[-n_val:]
-
-    ic_means = {b: float(train_ic[f"ic_{b}"].mean()) if f"ic_{b}" in train_ic else np.nan
-                for b in BLOCKS}
-    confidence = _coverage_confidence(train_ic)
-
-    champion = cfg.weights
-    challenger = propose_weights(champion, ic_means, cfg, confidence)
-
-    champ_val = evaluate_weights(val_snaps, champion)
-    chall_val = evaluate_weights(val_snaps, challenger)
-
-    ic_cols = {
-        f"ic_{b}": (round(ic_means[b], 5) if ic_means.get(b) == ic_means.get(b) else "")
-        for b in BLOCKS
-    }
-    rec.update({
-        "n_trades": n_trades,
-        "eval_dates": len(snapshots),
-        **ic_cols,
-        "champion_val_mean": champ_val["mean"],
-        "challenger_val_mean": chall_val["mean"],
-        "champion_val_sharpe": champ_val["sharpe"],
-        "challenger_val_sharpe": chall_val["sharpe"],
-        "weights_after": json.dumps(challenger),
-    })
-
-    better = (
-        chall_val["n"] > 0
-        and champ_val["n"] > 0
-        and np.nan_to_num(chall_val["sharpe"], nan=-9) > np.nan_to_num(champ_val["sharpe"], nan=-9)
-        and np.nan_to_num(chall_val["mean"], nan=-9) >= np.nan_to_num(champ_val["mean"], nan=-9)
-    )
-
-    if L.get("mode") == "propose_pr":
-        rec["decision"] = "proposed"
-        rec["reason"] = "propose_pr mode: weights left unchanged, see PR"
-    elif not better and L.get("rollback_if_worse", True):
-        rec["decision"] = "rolled_back"
-        rec["reason"] = "challenger did not beat champion out of sample"
-        rec["weights_after"] = json.dumps(champion)
-    elif dry_run:
-        rec["decision"] = "dry_run"
-        rec["reason"] = "would have accepted challenger"
-    else:
-        rec["decision"] = "accepted"
-        rec["reason"] = "challenger beat champion out of sample"
-        cfg.save_weights(challenger)
-
-    _append_log(rec, cfg.path("weights_history"))
-    return rec
 
 
 def _append_log(rec: dict, path: Path) -> None:
