@@ -132,7 +132,6 @@ def build_payload(cfg: Config) -> dict:
             "name": strat.get("name"),
             "start_capital": strat.get("start_capital"),
             "n_slots": strat.get("n_slots"),
-            "hold_days": strat.get("hold_days"),
             "max_positions_per_sector": strat.get("max_positions_per_sector"),
         },
         "stats": stats,
