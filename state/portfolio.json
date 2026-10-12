@@ -1,6 +1,6 @@
 {
   "cash": 657.426297033976,
-  "start_capital": 10000.0,
+  "start_capital": 10000,
   "bar_count": 25,
   "last_run_date": "2026-10-09",
   "positions": [
@@ -305,7 +305,7 @@
       "shares": 1.419895,
       "entry_date": "2026-09-28",
       "entry_price": 340.8704,
-      "cost_basis": 484.0,
+      "cost_basis": 484,
       "entry_bar": 18,
       "entry_score": 0.8410723709429708,
       "entry_blocks": {
@@ -333,7 +333,7 @@
       "shares": 2.115437,
       "entry_date": "2026-09-28",
       "entry_price": 228.7943,
-      "cost_basis": 484.0,
+      "cost_basis": 484,
       "entry_bar": 18,
       "entry_score": 0.6643531276938139,
       "entry_blocks": {
@@ -361,7 +361,7 @@
       "shares": 3.089132,
       "entry_date": "2026-09-28",
       "entry_price": 156.6783,
-      "cost_basis": 484.0,
+      "cost_basis": 484,
       "entry_bar": 18,
       "entry_score": 0.6369924288836575,
       "entry_blocks": {
@@ -389,7 +389,7 @@
       "shares": 3.924697,
       "entry_date": "2026-09-28",
       "entry_price": 123.3216,
-      "cost_basis": 484.0,
+      "cost_basis": 484,
       "entry_bar": 18,
       "entry_score": 0.662112373894027,
       "entry_blocks": {
@@ -551,13 +551,6 @@
     }
   ],
   "pending_orders": [
-    {
-      "side": "SELL",
-      "ticker": "SNDK",
-      "trade_id": 3,
-      "reason": "hold period elapsed",
-      "notional": 0.0
-    },
     {
       "side": "BUY",
       "ticker": "HPE",
