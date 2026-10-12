@@ -2,9 +2,8 @@
 
 Mechanics
 ---------
-* ``n_slots`` (21) concurrent positions, one new entry per trading day,
-  each held ``hold_days`` (21) trading days. In steady state the ladder is
-  full and one position rolls off each day => ~250 round trips per year.
+* ``n_slots`` is a maximum concurrent-position limit, not a holding target.
+  Positions are re-scored daily and exit only when signal/data-risk rules fire.
 * **Next-open execution.** A signal computed from day T's close becomes a
   *pending order* filled at day T+1's open. Nothing is ever transacted at a
   price that was used to generate the signal, so the equity curve carries no
