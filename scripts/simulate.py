@@ -12,7 +12,7 @@ What it proves
 --------------
 * the daily job survives 300 consecutive runs, each one resuming from the
   state file the previous run wrote (that is how Actions actually behaves);
-* the ladder fills up to ``n_slots`` and then rolls one position per day;
+* the portfolio respects ``n_slots`` while positions remain open until signal-based exits;
 * cash never goes negative, no ticker is ever held twice, the sector cap holds;
 * the accounting identity ``equity == capital + realised + unrealised`` holds
   to the cent, every day;
@@ -53,7 +53,7 @@ from tests import synthetic  # noqa: E402
 WARMUP_DAYS = 300          # bars needed before day 1 (MA200 + 12m momentum)
 N_NAMES = 120              # synthetic universe size
 FUND_REFRESH_EVERY = 5     # trading days between fundamentals snapshots (weekly)
-LEARN_EVERY = 63           # trading days between learning runs (~quarterly)
+LEARN_EVERY = 0            # lifecycle learner remains disabled until implemented
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,6 @@ def check_invariants(cfg: Config, state, trades: pd.DataFrame, day: str) -> None
     """Raise AssertionError on the first violated invariant."""
     strat = cfg.strategy
     n_slots = int(strat["n_slots"])
-    hold = int(strat["hold_days"])
     cap = int(strat["max_positions_per_sector"])
 
     def bad(msg: str):
@@ -128,12 +127,7 @@ def check_invariants(cfg: Config, state, trades: pd.DataFrame, day: str) -> None
         if n > cap:
             bad(f"sector {sector!r} holds {n} positions, cap is {cap}")
 
-    # --- hold period -----------------------------------------------------
-    # A position may overrun slightly: the sell is queued on the day the hold
-    # elapses and fills at the next open, and a missing bar defers it further.
-    for p in state.positions:
-        if p["bars_held"] > hold + 4:
-            bad(f"{p['ticker']} held {p['bars_held']} bars, hold_days={hold}")
+    # No holding-age invariant: positions exit only on signal/data-risk rules.
 
     # --- the accounting identity ----------------------------------------
     realised = 0.0
@@ -304,7 +298,7 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
 
     # Did the ladder actually fill and roll as designed?
     n_slots = int(cfg.strategy["n_slots"])
-    if len(sim_dates) > n_slots + int(cfg.strategy["hold_days"]) + 5:
+    if len(sim_dates) > n_slots + 5:
         if peak_positions < n_slots:
             failures.append(
                 f"ladder never filled: peak {peak_positions} of {n_slots} slots "
