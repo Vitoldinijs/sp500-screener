@@ -193,7 +193,7 @@ def _sheet_positions(wb, st, positions, cfg, has_data_sheet, price_history=None)
 
     headers = ["Тикер", "Компания", "Сектор", "Дата входа", "Цена входа", "Акций",
                "Вложено", "Тек. цена", "Стоимость", "P&L $", "P&L %",
-               "Дней держим", "До выхода", "Скор входа", "Проверка AV", "Динамика"]
+               "Дней держим", "Выход", "Скор входа", "Проверка AV", "Динамика"]
     widths = [9, 26, 22, 12, 11, 10, 11, 11, 12, 11, 9, 12, 11, 11, 14, 14]
     hrow = 3
     _table_header(ws, st, hrow, headers, widths)
@@ -226,7 +226,7 @@ def _sheet_positions(wb, st, positions, cfg, has_data_sheet, price_history=None)
         ws.write_formula(r, 10, f"=IFERROR(J{r+1}/G{r+1},0)", st.pct2,
                          (shares * last - cost) / cost if cost else 0.0)
         ws.write_number(r, 11, held, st.int_)
-        ws.write_formula(r, 12, f"=MAX(0,{hold}-L{r+1})", st.int_, max(0, hold - held))
+        ws.write_string(r, 12, "Signal", st.text)
         ws.write_number(r, 13, _f(p.get("entry_score")), st.num)
         ws.write_string(r, 14, str(p.get("av_verdict", "") or ""), st.text)
 
