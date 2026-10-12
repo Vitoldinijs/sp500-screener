@@ -296,20 +296,17 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
           f"  {[r['decision'] for r in learning_runs]}")
     print(f"  wall clock          {time.time() - t0:,.1f}s")
 
-    # Did the ladder actually fill and roll as designed?
-    n_slots = int(cfg.strategy["n_slots"])
-    if len(sim_dates) > n_slots + 5:
-        if peak_positions < n_slots:
-            failures.append(
-                f"ladder never filled: peak {peak_positions} of {n_slots} slots "
-                "in a run long enough to fill"
-            )
-        expected_trades = len(sim_dates) - n_slots - 5
-        if stats["n_trades"] < expected_trades * 0.7:
-            failures.append(
-                f"only {stats['n_trades']} closed trades, expected roughly "
-                f"{expected_trades} (one roll-off per day once full)"
-            )
+    # A signal-driven strategy has no predetermined trade count. Do not
+    # expect daily roll-offs: strong positions may remain open for a long time.
+    decision_history = pipeline._load_csv(cfg.path("decision_history_csv"))
+    if decision_history.empty:
+        failures.append("no decision history was persisted")
+    elif "data_date" not in decision_history or "ticker" not in decision_history:
+        failures.append("decision history is missing required date/ticker keys")
+    elif decision_history.duplicated(["data_date", "ticker"]).any():
+        failures.append("decision history contains duplicate date/ticker records")
+    elif stats["days_live"] and decision_history["data_date"].nunique() < stats["days_live"] - 1:
+        failures.append("decision history does not cover most simulated run dates")
 
     xlsx = cfg.path("excel_report")
     if xlsx.exists():
