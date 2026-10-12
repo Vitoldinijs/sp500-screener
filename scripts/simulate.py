@@ -244,7 +244,7 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
             break
 
         # ---- monthly-ish learning job on real accumulated state ---------
-        if i > 0 and i % LEARN_EVERY == 0:
+        if LEARN_EVERY > 0 and i > 0 and i % LEARN_EVERY == 0:
             rec = learn.run_learning(
                 cfg, prices[prices["date"] <= day], universe
             )
