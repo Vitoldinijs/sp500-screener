@@ -256,8 +256,7 @@ def _sheet_positions(wb, st, positions, cfg, has_data_sheet, price_history=None)
         })
         ws.autofilter(hrow, 0, r - 1, len(headers) - 1)
     else:
-        ws.write(hrow + 1, 0, "Пока нет открытых позиций — лестница только "
-                              "начинает набираться.", st.note)
+        ws.write(hrow + 1, 0, "Пока нет открытых позиций.", st.note)
     return ws
 
 
@@ -590,11 +589,14 @@ def _sheet_dashboard(wb, st, state, stats, meta, cfg, n_pos, equity, positions):
     ]
     for label, value, fmt in detail:
         ws.write_string(r, 1, label, st.text)
-        v = _f(value, np.nan)
-        if np.isfinite(v):
-            ws.write_number(r, 2, v, fmt)
+        if isinstance(value, str):
+            ws.write_string(r, 2, value, st.text)
         else:
-            ws.write_string(r, 2, "—", st.text)
+            v = _f(value, np.nan)
+            if np.isfinite(v):
+                ws.write_number(r, 2, v, fmt)
+            else:
+                ws.write_string(r, 2, "—", st.text)
         r += 1
 
     # live cross-sheet formula so the dashboard follows manual price edits
