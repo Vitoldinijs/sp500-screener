@@ -80,8 +80,12 @@ def apply_filters(metrics: pd.DataFrame, cfg) -> pd.DataFrame:
             return pd.Series(np.nan, index=m.index, dtype=float)
         return pd.to_numeric(m[name], errors="coerce").replace([np.inf, -np.inf], np.nan)
 
-    fail(col("last_close") < min_price, f"price < ${min_price:g}")
-    fail(col("history_days") < min_hist, "insufficient price history")
+    price = col("last_close")
+    fail(price.isna(), "price data unavailable")
+    fail(price < min_price, f"price < ${min_price:g}")
+    history = col("history_days")
+    fail(history.isna(), "insufficient price history")
+    fail(history < min_hist, "insufficient price history")
 
     # Liquidity and market capitalisation are mandatory entry safety checks
     # by default. Missing provider data must not silently disable a filter.
