@@ -708,13 +708,91 @@ function renderWeights(d) {
   return sec;
 }
 
+function renderLifecycleEvaluation(d) {
+  const report = d.lifecycle_evaluation || {};
+  const counts = report.counts || {};
+  const overall = report.overall || {};
+  const split = report.temporal_validation || {};
+  const train = split.training || {};
+  const valid = split.validation || {};
+  const sec = el('section');
+  sec.appendChild(el('h2', { text: 'Signal outcome assessment' }));
+  sec.appendChild(el('p', {
+    class: 'sub',
+    text: report.status_message || 'The first evaluation report will appear after the next daily run.'
+  }));
+
+  const stats = el('div', { class: 'stats' });
+  const cells = [
+    ['Closed trades', counts.closed_trades ?? 0],
+    ['Linked signals', counts.linked_trades ?? 0],
+    ['Usable outcomes', counts.evaluable_trades ?? 0],
+    ['Win rate', fmtPct(overall.win_rate, 1)],
+    ['Average return', fmtPct(overall.mean_return, 2)],
+    ['Median return', fmtPct(overall.median_return, 2)],
+  ];
+  cells.forEach(([label, value]) => {
+    const box = el('div', { class: 'stat' });
+    box.append(el('div', { class: 'k', text: label }),
+               el('div', { class: 'v', text: String(value) }));
+    stats.appendChild(box);
+  });
+  sec.appendChild(stats);
+
+  const splitText = 'Temporal split: training ' + (train.n ?? 0) +
+    ' trades; validation ' + (valid.n ?? 0) +
+    '; cutoff ' + fmtDate(split.cutoff_signal_date) + '. ' +
+    (split.status === 'available_for_review'
+      ? 'The split is large enough for review, not automatic weight changes.'
+      : 'More linked completed trades are needed before temporal validation.');
+  const splitLine = el('p', { class: 'sub', text: splitText });
+  splitLine.style.marginTop = '0.8rem';
+  sec.appendChild(splitLine);
+
+  const factors = report.factor_associations || [];
+  if (!factors.length) {
+    sec.classList.add('empty');
+    sec.appendChild(el('p', { text: 'Factor associations will be calculated when linked lifecycle outcomes are available.' }));
+    return sec;
+  }
+  const table = el('table');
+  table.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: 'factor block' }),
+    el('th', { class: 'num', text: 'n' }),
+    el('th', { class: 'num', text: 'rho · all' }),
+    el('th', { class: 'num', text: 'rho · train' }),
+    el('th', { class: 'num', text: 'rho · validation' }),
+    el('th', { class: 'num', text: 'mean return if factor > 0' }),
+    el('th', { class: 'num', text: 'difference vs ≤ 0' }),
+  ])));
+  const tbody = el('tbody');
+  factors.forEach(row => {
+    tbody.appendChild(el('tr', {}, [
+      el('td', { class: 'name-cell', text: row.block || '—' }),
+      el('td', { class: 'num', text: String(row.n ?? 0) }),
+      el('td', { class: 'num', text: fmtNum(row.spearman_return, 2) }),
+      el('td', { class: 'num', text: fmtNum(row.training_spearman_return, 2) }),
+      el('td', { class: 'num', text: fmtNum(row.validation_spearman_return, 2) }),
+      el('td', { class: 'num ' + pctClass(row.mean_return_factor_positive), text: fmtPct(row.mean_return_factor_positive, 2) }),
+      el('td', { class: 'num ' + pctClass(row.positive_minus_nonpositive_mean_return), text: fmtPct(row.positive_minus_nonpositive_mean_return, 2) }),
+    ]));
+  });
+  table.appendChild(tbody);
+  sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
+  sec.appendChild(el('p', {
+    class: 'sub',
+    text: 'Exploratory associations only; small samples can be noisy and correlation is not causation. Factor weights are not changed by this report.'
+  }));
+  return sec;
+}
+
 function renderTrades(d) {
   const rows = d.recent_trades || [];
   const sec = el('section');
   sec.appendChild(el('h2', { text: 'Recent closed trades' }));
   if (!rows.length) {
     sec.classList.add('empty');
-    sec.appendChild(el('p', { text: 'No positions have closed yet — the first entries are still inside their holding period.' }));
+    sec.appendChild(el('p', { text: 'No positions have closed yet.' }));
     return sec;
   }
   const table = el('table');
@@ -788,7 +866,7 @@ async function main() {
   }
 
   $('#strategyLabel').textContent =
-    `${(d.strategy && d.strategy.name) || 'strategy'} · ${(d.strategy && d.strategy.hold_days) || '?'}d hold`;
+    `${(d.strategy && d.strategy.name) || 'strategy'} · signal-driven exits`;
 
   app.innerHTML = '';
   app.appendChild(renderHero(d));
@@ -798,6 +876,7 @@ async function main() {
   app.appendChild(renderSectors(d));
   app.appendChild(renderWeights(d));
   app.appendChild(renderTrades(d));
+  app.appendChild(renderLifecycleEvaluation(d));
   app.appendChild(renderLearning(d));
   app.appendChild(renderFooter(d));
 }
