@@ -182,6 +182,9 @@ def test_missing_mandatory_entry_safety_data_fails_closed():
     uni, px, fund = _fixture(n=30)
     metrics = factors.build_metrics(px, fund, uni)
     metrics.loc[metrics.index[0], "dollar_volume"] = np.nan
+    # Keep the other core filters satisfied so the intended failure reason
+    # is deterministic even when a synthetic sample happens to be illiquid.
+    metrics.loc[metrics.index[1], "dollar_volume"] = float(cfg.filters["min_dollar_volume"]) * 2
     metrics.loc[metrics.index[1], "market_cap"] = np.nan
 
     out = scoring.apply_filters(metrics, cfg)
@@ -194,7 +197,8 @@ def test_missing_mandatory_entry_safety_data_fails_closed():
     # filter remains active rather than disappearing silently.
     no_cap = scoring.apply_filters(metrics.drop(columns=["market_cap"]), cfg)
     assert not no_cap["eligible"].any()
-    assert no_cap["exclude_reason"].str.contains("market cap unavailable").all()
+    assert not no_cap["eligible"].any()
+    assert no_cap["exclude_reason"].str.contains("market cap unavailable").any()
 
 
 def test_allocation_multiplier_and_entry_notional_follow_rank_strength():
