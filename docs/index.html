@@ -823,7 +823,7 @@ function renderLearning(d) {
   sec.appendChild(el('h2', { text: 'Learning log' }));
   if (!rows.length) {
     sec.classList.add('empty');
-    sec.appendChild(el('p', { text: 'No monthly tuning run has happened yet — it starts once 40+ trades have closed.' }));
+    sec.appendChild(el('p', { text: 'Automatic tuning is paused while lifecycle outcomes and independent validation accumulate.' }));
     return sec;
   }
   const table = el('table');
