@@ -210,6 +210,7 @@ class Ladder:
             "cost_basis": round(cost, 2),
             "cumulative_cost_basis": float(cost),
             "cumulative_exit_proceeds": 0.0,
+            "cumulative_realized_pnl": 0.0,
             "cumulative_shares_sold": 0.0,
             "total_shares_bought": float(shares),
             "allocation_weight": float(order.get("allocation_weight", 1.0)),
@@ -285,6 +286,7 @@ class Ladder:
         # versions before any partial sale changes the remaining cost basis.
         pos.setdefault("cumulative_cost_basis", float(pos.get("cost_basis", 0.0)))
         pos.setdefault("cumulative_exit_proceeds", 0.0)
+        pos.setdefault("cumulative_realized_pnl", 0.0)
         pos.setdefault("cumulative_shares_sold", 0.0)
         pos.setdefault("total_shares_bought", old_shares)
         pos.setdefault("average_entry_price", float(pos.get("entry_price", px_open)))
@@ -310,6 +312,9 @@ class Ladder:
             )
             pos["cumulative_shares_sold"] = (
                 float(pos.get("cumulative_shares_sold", 0.0)) + shares_to_sell
+            )
+            pos["cumulative_realized_pnl"] = (
+                float(pos.get("cumulative_realized_pnl", 0.0)) + proceeds - cost_removed
             )
             event = {
                 "event": "rebalanced_down", "ticker": pos["ticker"],
