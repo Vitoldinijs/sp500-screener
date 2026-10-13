@@ -50,10 +50,7 @@ def _stats(rows: pd.DataFrame) -> dict:
         "median_return": _finite(returns.median()) if len(returns) else None,
         "total_pnl": _finite(pnl.sum()) if len(pnl) else 0.0,
         "mean_bars_held": _finite(bars.mean()) if len(bars) else None,
-        "profit_factor": (
-            _finite(gross_profit / gross_loss) if gross_loss > 0
-            else (_finite(gross_profit) if gross_profit > 0 else None)
-        ),
+        "profit_factor": _finite(gross_profit / gross_loss) if gross_loss > 0 else None,
     }
 
 
@@ -242,7 +239,7 @@ def refresh_lifecycle_evaluation(outcomes_path: Path, report_path: Path,
     if outcomes_path.exists():
         try:
             outcomes = pd.read_csv(outcomes_path)
-        except (OSError, pd.errors.ParserError, UnicodeDecodeError):
+        except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError):
             outcomes = pd.DataFrame()
     else:
         outcomes = pd.DataFrame()
