@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from screener import factors, learn, lifecycle, portfolio, scoring  # noqa: E402
+from screener import evaluation, factors, learn, lifecycle, portfolio, scoring  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -458,24 +458,6 @@ def test_spearman_matches_known_cases():
     assert np.isnan(learn.spearman(a, pd.Series([5.0] * 10)))
 
 
-def test_evaluate_weights_prefers_the_better_block():
-    """A weight set pointing at the predictive block must score higher."""
-    rng = np.random.default_rng(3)
-    snaps = []
-    for _ in range(30):
-        n = 40
-        good = pd.Series(rng.normal(size=n))
-        noise = pd.Series(rng.normal(size=n))
-        fwd = good * 0.05 + rng.normal(0, 0.01, size=n)   # `good` predicts fwd
-        snaps.append({"date": None, "table": pd.DataFrame(
-            {"momentum": good, "value": noise, "fwd": fwd})})
-
-    smart = learn.evaluate_weights(snaps, {"momentum": 1.0, "value": 0.0})
-    dumb = learn.evaluate_weights(snaps, {"momentum": 0.0, "value": 1.0})
-    assert smart["mean"] > dumb["mean"], "weighting the predictive block must pay off"
-    assert smart["hit_rate"] > 0.7
-
-
 # ---------------------------------------------------------------------------
 # fundamentals point-in-time behaviour
 # ---------------------------------------------------------------------------
@@ -602,6 +584,91 @@ def test_append_trades_upgrades_old_schema_and_deduplicates_trade_ids():
         assert "signal_id" in saved.columns and "signal_date" in saved.columns
         assert pd.isna(saved.loc[saved["trade_id"] == 1, "signal_id"]).all()
         assert saved.loc[saved["trade_id"] == 2, "pnl"].iloc[0] == 12.0
+
+
+# ---------------------------------------------------------------------------
+# lifecycle evaluation
+# ---------------------------------------------------------------------------
+def _evaluation_fixture(n=50):
+    rows = []
+    start = pd.Timestamp("2025-01-01", tz="UTC")
+    for i in range(n):
+        signal_date = start + pd.Timedelta(days=i)
+        ret = (i - (n / 2)) / 500
+        rows.append({
+            "trade_id": i + 1,
+            "ticker": f"T{i:03d}",
+            "signal_id": f"{signal_date:%Y-%m-%d}:T{i:03d}",
+            "signal_date": signal_date.strftime("%Y-%m-%d"),
+            "exit_date": (signal_date + pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
+            "pnl": round(ret * 500, 2),
+            "return_pct": ret,
+            "bars_held": 5 + i % 4,
+            "exit_reason": "signal weakened",
+            "feature_link_status": "linked",
+            "learning_eligible": True,
+            "signal_block_momentum": float(i),
+            "signal_block_value": float(n - i),
+            "signal_block_quality": float(i % 7),
+            "signal_block_growth": float(i % 5),
+            "signal_block_earnings": float(i % 4),
+            "signal_block_risk": float(i % 3),
+            "signal_block_technical": float(i % 9),
+        })
+    return pd.DataFrame(rows)
+
+
+def test_lifecycle_evaluation_reports_insufficient_sample_without_tuning():
+    report = evaluation.evaluate_lifecycle_outcomes(_evaluation_fixture(6), {
+        "min_trades_for_evaluation": 40,
+        "min_training_trades": 20,
+        "min_validation_trades": 10,
+    })
+    assert report["status"] == "collecting_data"
+    assert report["counts"]["evaluable_trades"] == 6
+    assert report["temporal_validation"]["status"] == "insufficient_sample"
+    assert report["learning_enabled"] is False
+    assert len(report["factor_associations"]) == 7
+
+
+def test_lifecycle_evaluation_uses_strict_temporal_validation_split():
+    report = evaluation.evaluate_lifecycle_outcomes(_evaluation_fixture(50), {
+        "min_trades_for_evaluation": 40,
+        "min_training_trades": 20,
+        "min_validation_trades": 10,
+        "validation_fraction": 0.30,
+        "min_factor_observations": 8,
+    })
+    assert report["status"] == "temporal_split_ready_for_review"
+    split = report["temporal_validation"]
+    assert split["training"]["n"] >= 20
+    assert split["validation"]["n"] >= 10
+    cutoff = pd.Timestamp(split["cutoff_signal_date"], tz="UTC")
+    rows = _evaluation_fixture(50)
+    exit_dates = pd.to_datetime(rows["exit_date"], utc=True)
+    signal_dates = pd.to_datetime(rows["signal_date"], utc=True)
+    assert (exit_dates[signal_dates < cutoff] < cutoff).sum() == split["training"]["n"]
+    momentum = next(r for r in report["factor_associations"] if r["block"] == "momentum")
+    assert momentum["spearman_return"] is not None
+    assert momentum["spearman_return"] > 0.9
+    assert momentum["validation_spearman_return"] is not None
+    assert report["learning_enabled"] is False
+
+
+def test_lifecycle_evaluation_writes_valid_json_for_empty_sample():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        outcomes_path = root / "signal_outcomes.csv"
+        report_path = root / "lifecycle_evaluation.json"
+        pd.DataFrame().to_csv(outcomes_path, index=False)
+        report = evaluation.refresh_lifecycle_evaluation(
+            outcomes_path, report_path, {"min_trades_for_evaluation": 40}
+        )
+        saved = json.loads(report_path.read_text(encoding="utf-8"))
+        assert saved["status"] == "collecting_data"
+        assert saved["counts"]["closed_trades"] == 0
+        assert saved["factor_associations"] == report["factor_associations"]
+        assert saved["learning_enabled"] is False
 
 
 # ---------------------------------------------------------------------------
