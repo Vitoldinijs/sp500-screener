@@ -403,6 +403,32 @@ def test_position_is_not_sold_just_because_time_passes():
         assert not any(o["side"] == "SELL" for o in state.pending_orders)
 
 
+def test_missing_core_risk_data_does_not_force_existing_position_to_exit():
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame({"open": [100.0], "close": [100.0]}, index=["AAA"])
+    ladder.run_day(
+        bar, date(2025, 1, 2),
+        shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 0.5,
+                    "allocation_weight": 1.0, "last_close": 100.0}],
+    )
+    ladder.run_day(bar, date(2025, 1, 3))
+    missing_risk_data = pd.DataFrame(
+        {"eligible": [False], "composite": [np.nan], "rank": [np.nan],
+         "exclude_reason": ["market cap unavailable"]},
+        index=["AAA"],
+    )
+    for i in range(3):
+        ladder.run_day(
+            bar, (pd.Timestamp("2025-01-04") + pd.Timedelta(days=i)).date(),
+            scored=missing_risk_data,
+        )
+        assert state.positions, "missing screening data alone must not close a holding"
+        assert not any(o["side"] == "SELL" for o in state.pending_orders)
+    assert state.positions[0].get("weak_signal_runs", 0) == 0
+
+
 def test_position_exits_after_signal_is_weak_for_consecutive_reviews():
     cfg = _cfg()
     state = portfolio.PortfolioState.new(10_000.0)
