@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from . import benchmark as bmod
-from . import excel_report, factors, learn, lifecycle, portfolio, scoring, universe
+from . import excel_report, evaluation, factors, learn, lifecycle, portfolio, scoring, universe
 from .config import Config, ensure_dirs
 from .data import alpha_vantage as av
 from .data import fundamentals as fund_mod
@@ -215,6 +215,17 @@ def run_daily(cfg: Config, allow_network: bool = True,
                 outcome_summary["learning_eligible_trades"],
             )
         )
+    evaluation_report = evaluation.refresh_lifecycle_evaluation(
+        cfg.path("signal_outcomes_csv"),
+        cfg.path("lifecycle_evaluation_json"),
+        cfg.learning,
+    )
+    _log(
+        "lifecycle assessment: {} ({} evaluable trades)".format(
+            evaluation_report["status"],
+            evaluation_report["counts"]["evaluable_trades"],
+        )
+    )
     return meta
 
 
