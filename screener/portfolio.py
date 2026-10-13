@@ -281,6 +281,13 @@ class Ladder:
             return {"event": "order_stale", "ticker": order.get("ticker")}
 
         old_shares = float(pos.get("shares", 0.0))
+        # Initialise cumulative fields for portfolio states created by older
+        # versions before any partial sale changes the remaining cost basis.
+        pos.setdefault("cumulative_cost_basis", float(pos.get("cost_basis", 0.0)))
+        pos.setdefault("cumulative_exit_proceeds", 0.0)
+        pos.setdefault("cumulative_shares_sold", 0.0)
+        pos.setdefault("total_shares_bought", old_shares)
+        pos.setdefault("average_entry_price", float(pos.get("entry_price", px_open)))
         if old_shares <= 0:
             return {"event": "rebalance_skipped", "ticker": pos["ticker"],
                     "reason": "position has no shares"}
@@ -398,8 +405,15 @@ class Ladder:
                 eligible = bool(row.get("eligible", False)) if pd.notna(row.get("eligible", False)) else False
                 rank = pd.to_numeric(pd.Series([row.get("rank")]), errors="coerce").iloc[0]
                 if not eligible:
-                    weak = True
                     review_detail = str(row.get("exclude_reason") or "screen eligibility lost")
+                    # Missing required provider data blocks new entries, but
+                    # must not itself force an existing position to exit.
+                    if "market cap unavailable" in review_detail or "liquidity data unavailable" in review_detail:
+                        p["weak_signal_runs"] = 0
+                        p["last_rank_percentile"] = None
+                        p["last_signal_review"] = "signal review paused: " + review_detail
+                        continue
+                    weak = True
                     rank_pct = None
                 elif pd.notna(rank) and eligible_count > 1:
                     rank_pct = float((eligible_count - float(rank)) / (eligible_count - 1))
@@ -471,6 +485,13 @@ class Ladder:
                 return allocation_multiplier(pct, self.cfg.strategy)
             if eligible and pd.notna(rank) and eligible_count == 1:
                 return allocation_multiplier(1.0, self.cfg.strategy)
+            reason = str(row.get("exclude_reason") or "")
+            if "market cap unavailable" in reason or "liquidity data unavailable" in reason:
+                try:
+                    previous = float(position.get("allocation_weight", 1.0))
+                    return previous if np.isfinite(previous) and previous > 0 else 1.0
+                except (TypeError, ValueError):
+                    return 1.0
             return allocation_multiplier(None, self.cfg.strategy)
         try:
             weight = float(position.get("allocation_weight", 1.0))
@@ -566,9 +587,14 @@ class Ladder:
             tid = position.get("trade_id")
             if tid in pending_sell_ids or tid in pending_rebalance_ids:
                 continue
-            # Do not resize a holding while its exit signal is being confirmed.
+            # Do not resize a holding while its exit signal is being confirmed,
+            # nor when mandatory screen data is temporarily unavailable.
             if int(position.get("weak_signal_runs", 0)) > 0:
                 continue
+            if position.get("ticker") in scored.index:
+                screen_reason = str(scored.loc[position["ticker"]].get("exclude_reason") or "")
+                if "market cap unavailable" in screen_reason or "liquidity data unavailable" in screen_reason:
+                    continue
             last_rebalance = int(position.get("last_rebalance_bar", position.get("entry_bar", 0)))
             if self.s.bar_count - last_rebalance < interval:
                 continue
