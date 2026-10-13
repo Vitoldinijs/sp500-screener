@@ -8,8 +8,9 @@ Mechanics
   *pending order* filled at day T+1's open. Nothing is ever transacted at a
   price that was used to generate the signal, so the equity curve carries no
   lookahead bias.
-* Position size = equity / n_slots at entry, so gains compound and slots stay
-  roughly equal-weighted.
+* Position targets are rank-weighted and periodically rebalanced. A configurable
+  cash reserve and slot normalisation prevent the strongest ranks from taking
+  more than the portfolio can fund.
 * Slippage is charged in basis points on both legs; commission is configurable
   (US brokers are mostly $0).
 
@@ -25,6 +26,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from .allocation import allocation_multiplier
 
 STATE_VERSION = 2
 
@@ -82,7 +85,12 @@ class PortfolioState:
 
     @property
     def reserved_cash(self) -> float:
-        return sum(float(o["notional"]) for o in self.pending_orders if o["side"] == "BUY")
+        return sum(
+            float(o.get("notional", 0.0))
+            for o in self.pending_orders
+            if o["side"] == "BUY"
+            or (o["side"] == "REBALANCE" and o.get("action") == "increase")
+        )
 
     @property
     def available_cash(self) -> float:
@@ -129,13 +137,27 @@ class Ladder:
         return float(raw) if self.fractional else float(np.floor(raw))
 
     # -- step 1: fill orders queued yesterday ------------------------------
+    @staticmethod
+    def _order_priority(order: dict) -> int:
+        # Free cash first, then the next new entry, then increase existing
+        # allocations with whatever cash remains.
+        if order.get("side") == "SELL":
+            return 0
+        if order.get("side") == "REBALANCE" and order.get("action") == "reduce":
+            return 1
+        if order.get("side") == "BUY":
+            return 2
+        if order.get("side") == "REBALANCE":
+            return 3
+        return 4
+
     def fill_pending(self, bar: pd.DataFrame, trade_date: date) -> list[dict]:
         """Execute pending orders at today's OPEN. `bar` is indexed by ticker
         with columns open/close."""
         events = []
         still_pending = []
 
-        for order in self.s.pending_orders:
+        for order in sorted(self.s.pending_orders, key=self._order_priority):
             t = order["ticker"]
             if t not in bar.index:
                 order["retries"] = int(order.get("retries", 0)) + 1
@@ -156,8 +178,13 @@ class Ladder:
 
             if order["side"] == "BUY":
                 events.append(self._execute_buy(order, px_open, trade_date))
-            else:
+            elif order["side"] == "SELL":
                 events.append(self._execute_sell(order, px_open, trade_date))
+            elif order["side"] == "REBALANCE":
+                events.append(self._execute_rebalance(order, px_open, trade_date))
+            else:
+                events.append({"event": "order_stale", "ticker": t,
+                               "reason": "unknown order side"})
 
         self.s.pending_orders = still_pending
         return [e for e in events if e]
@@ -181,6 +208,11 @@ class Ladder:
             "entry_date": trade_date.isoformat(),
             "entry_price": round(fill, 4),
             "cost_basis": round(cost, 2),
+            "cumulative_cost_basis": float(cost),
+            "cumulative_exit_proceeds": 0.0,
+            "cumulative_shares_sold": 0.0,
+            "total_shares_bought": float(shares),
+            "allocation_weight": float(order.get("allocation_weight", 1.0)),
             "entry_bar": self.s.bar_count,
             "entry_score": order.get("entry_score"),
             "signal_date": order.get("signal_date"),
@@ -204,10 +236,15 @@ class Ladder:
             return {"event": "order_stale", "ticker": order["ticker"]}
 
         fill = self._sell_price(px_open)
-        proceeds = pos["shares"] * fill - self.commission
-        self.s.cash += proceeds
-        pnl = proceeds - pos["cost_basis"]
-        ret = pnl / pos["cost_basis"] if pos["cost_basis"] else 0.0
+        proceeds_now = pos["shares"] * fill - self.commission
+        self.s.cash += proceeds_now
+        proceeds = float(pos.get("cumulative_exit_proceeds", 0.0)) + proceeds_now
+        total_cost_basis = float(pos.get("cumulative_cost_basis", pos["cost_basis"]))
+        shares_sold = float(pos.get("cumulative_shares_sold", 0.0)) + float(pos["shares"])
+        total_shares_bought = float(pos.get("total_shares_bought", shares_sold))
+        average_entry_price = total_cost_basis / total_shares_bought if total_shares_bought else pos["entry_price"]
+        pnl = proceeds - total_cost_basis
+        ret = pnl / total_cost_basis if total_cost_basis else 0.0
 
         self.trades.append({
             "trade_id": tid,
@@ -215,11 +252,11 @@ class Ladder:
             "name": pos.get("name", ""),
             "sector": pos.get("sector", "Unknown"),
             "entry_date": pos["entry_date"],
-            "entry_price": pos["entry_price"],
+            "entry_price": round(average_entry_price, 4),
             "exit_date": trade_date.isoformat(),
             "exit_price": round(fill, 4),
-            "shares": pos["shares"],
-            "cost_basis": round(pos["cost_basis"], 2),
+            "shares": round(shares_sold, 6),
+            "cost_basis": round(total_cost_basis, 2),
             "proceeds": round(proceeds, 2),
             "pnl": round(pnl, 2),
             "return_pct": round(ret, 6),
@@ -233,6 +270,77 @@ class Ladder:
         self.s.positions = [p for p in self.s.positions if p["trade_id"] != tid]
         return {"event": "sold", "ticker": pos["ticker"], "price": fill,
                 "pnl": pnl, "trade_id": tid, "reason": order.get("reason", "signal weakened")}
+
+
+    def _execute_rebalance(self, order: dict, px_open: float, trade_date: date) -> dict:
+        """Move a position toward its target dollar value at the next open."""
+        tid = order.get("trade_id")
+        pos = next((p for p in self.s.positions if p["trade_id"] == tid), None)
+        if pos is None:
+            return {"event": "order_stale", "ticker": order.get("ticker")}
+
+        old_shares = float(pos.get("shares", 0.0))
+        if old_shares <= 0:
+            return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                    "reason": "position has no shares"}
+
+        target_value = max(0.0, float(order.get("target_value", 0.0)))
+        desired_shares = target_value / px_open if px_open > 0 else old_shares
+        delta = desired_shares - old_shares
+
+        if delta < 0:
+            shares_to_sell = min(old_shares, -delta)
+            fill = self._sell_price(px_open)
+            proceeds = shares_to_sell * fill - self.commission
+            cost_basis = float(pos.get("cost_basis", 0.0))
+            cost_removed = cost_basis * shares_to_sell / old_shares
+            self.s.cash += proceeds
+            pos["shares"] = round(old_shares - shares_to_sell, 6)
+            pos["cost_basis"] = max(0.0, round(cost_basis - cost_removed, 2))
+            pos["cumulative_exit_proceeds"] = (
+                float(pos.get("cumulative_exit_proceeds", 0.0)) + proceeds
+            )
+            pos["cumulative_shares_sold"] = (
+                float(pos.get("cumulative_shares_sold", 0.0)) + shares_to_sell
+            )
+            event = {
+                "event": "rebalanced_down", "ticker": pos["ticker"],
+                "shares_sold": shares_to_sell, "price": fill, "proceeds": proceeds,
+            }
+        elif delta > 0:
+            fill = self._buy_price(px_open)
+            cash_available = max(0.0, self.s.cash - self.commission)
+            shares_to_buy = min(delta, self._shares(cash_available, fill))
+            if shares_to_buy <= 0:
+                return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                        "reason": "insufficient cash"}
+            cost = shares_to_buy * fill + self.commission
+            self.s.cash -= cost
+            pos["shares"] = round(old_shares + shares_to_buy, 6)
+            pos["cost_basis"] = round(float(pos.get("cost_basis", 0.0)) + cost, 2)
+            pos["cumulative_cost_basis"] = (
+                float(pos.get("cumulative_cost_basis", pos.get("cost_basis", 0.0))) + cost
+            )
+            pos["total_shares_bought"] = (
+                float(pos.get("total_shares_bought", old_shares)) + shares_to_buy
+            )
+            total_bought = float(pos["total_shares_bought"])
+            pos["average_entry_price"] = (
+                float(pos["cumulative_cost_basis"]) / total_bought if total_bought else fill
+            )
+            event = {
+                "event": "rebalanced_up", "ticker": pos["ticker"],
+                "shares_bought": shares_to_buy, "price": fill, "cost": cost,
+            }
+        else:
+            return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                    "reason": "target already met"}
+
+        pos["last_price"] = round(px_open, 4)
+        pos["last_value"] = round(float(pos["shares"]) * px_open, 2)
+        pos["last_rebalance_bar"] = self.s.bar_count
+        pos["allocation_weight"] = float(order.get("allocation_weight", pos.get("allocation_weight", 1.0)))
+        return event
 
     # -- step 2: mark to market -------------------------------------------
     def mark_to_market(self, bar: pd.DataFrame) -> None:
