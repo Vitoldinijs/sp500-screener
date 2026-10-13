@@ -1,4 +1,4 @@
-"""Self-learning: walk-forward factor-weight tuning with rollback.
+"""Factor-weight constraints and helpers (automatic updates paused).
 
 How it learns
 -------------
@@ -17,12 +17,12 @@ Guardrails, because factor timing is notoriously easy to overfit:
   * weights move at most ``max_step_per_month`` (0.05) per run
   * every weight stays inside [weight_min, weight_max] and they sum to 1
   * nothing changes until ``min_trades_for_update`` real trades have closed
-  * the proposal is scored on a held-out window and **rolled back** unless it
-    beats the incumbent ("champion") weights
+  * automatic tuning remains paused until lifecycle outcomes and validation
+    are implemented and reviewed
   * fundamental blocks get a shrink factor while point-in-time coverage is
     still thin, since the snapshot history only starts accumulating now
 
-Every decision, accepted or rejected, is appended to weights_history.csv.
+Weight-proposal helpers remain available for a future validated lifecycle learner.
 """
 from __future__ import annotations
 
@@ -75,39 +75,6 @@ def build_panel(
     will evaluate completed signal lifecycles using actual entry/exit events.
     """
     return pd.DataFrame(), []
-
-
-def evaluate_weights(snapshots: list[dict], weights: dict, top_n: int = 1) -> dict:
-    """Mean forward return of the top-`top_n` picks under a weight set."""
-    picks = []
-    for snap in snapshots:
-        tbl = snap["table"]
-        cols = [b for b in BLOCKS if b in tbl.columns]
-        if not cols:
-            continue
-        w = np.array([float(weights.get(b, 0.0)) for b in cols])
-        present = tbl[cols].notna().to_numpy()
-        wm = np.where(present, w, 0.0)
-        denom = wm.sum(axis=1)
-        vals = np.nan_to_num(tbl[cols].to_numpy(), nan=0.0)
-        comp = np.where(denom > 0, (vals * wm).sum(axis=1) / np.where(denom > 0, denom, 1), np.nan)
-        comp = pd.Series(comp, index=tbl.index)
-        chosen = comp.dropna().sort_values(ascending=False).head(top_n).index
-        r = tbl.loc[chosen, "fwd"].dropna()
-        if len(r):
-            picks.append(float(r.mean()))
-
-    if not picks:
-        return {"n": 0, "mean": np.nan, "hit_rate": np.nan, "sharpe": np.nan}
-    arr = np.array(picks, dtype=float)
-    sd = arr.std(ddof=0)
-    return {
-        "n": int(len(arr)),
-        "mean": float(arr.mean()),
-        "hit_rate": float((arr > 0).mean()),
-        # per-pick Sharpe-like ratio (not annualised; used only for comparison)
-        "sharpe": float(arr.mean() / sd) if sd > 0 else np.nan,
-    }
 
 
 # ---------------------------------------------------------------------------
