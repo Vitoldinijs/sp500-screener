@@ -13,6 +13,13 @@ strategy:
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
   max_positions_per_sector: 5   # soft diversification cap (of n_slots)
+  cash_reserve_pct: 0.10        # target cash buffer; the rest is allocated to open slots
+  allocation_min_multiplier: 0.60 # relative target weight for the weakest eligible rank
+  allocation_max_multiplier: 1.80 # relative target weight for the strongest eligible rank
+  allocation_rank_power: 1.50   # makes top-ranked stocks receive meaningfully larger targets
+  rebalance_threshold_pct: 0.15 # rebalance only when target differs by at least 15%
+  rebalance_interval_sessions: 5 # at most one rebalance per position per 5 sessions
+  rebalance_min_notional: 50.0  # ignore tiny adjustments
   execution: "next_open"        # fills at next session's open (no lookahead)
   slippage_bps: 5.0             # 0.05% each way, models spread + impact
   commission_per_trade: 0.0     # US brokers are mostly commission-free
@@ -22,7 +29,9 @@ strategy:
 filters:
   min_price: 5.0                # avoid sub-$5 names
   min_dollar_volume: 5000000    # 20-day avg $ volume, liquidity floor
+  require_dollar_volume: true   # missing liquidity data blocks new entries
   min_market_cap: 2000000000    # small-cap floor ($2B)
+  require_market_cap: true      # no price-only entries without a valid market cap
   min_history_days: 200         # need enough bars for MA200 / momentum
   max_missing_fundamentals: 3   # skip names missing too many ratios
   max_net_debt_ebitda: 4.0      # leverage cap; NaN (e.g. banks/REITs w/o a
