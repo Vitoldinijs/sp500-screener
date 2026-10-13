@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from screener import factors, learn, portfolio, scoring  # noqa: E402
+from screener import factors, learn, lifecycle, portfolio, scoring  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -497,6 +497,111 @@ def test_latest_asof_never_reads_the_future():
         latest = fund_mod.latest_asof(path)
         assert (latest["pe_ratio"] == 30.0).all()
         assert len(latest) == len(uni), "one row per ticker"
+
+
+# ---------------------------------------------------------------------------
+# lifecycle signal/outcome linkage
+# ---------------------------------------------------------------------------
+def test_lifecycle_outcomes_link_the_entry_snapshot_and_reconcile_idempotently():
+    decisions = pd.DataFrame([{
+        "data_date": "2025-01-02",
+        "ticker": "AAA",
+        "signal_id": "2025-01-02:AAA",
+        "last_close": 100.0,
+        "eligible": True,
+        "rank": 1,
+        "rank_percentile": 1.0,
+        "composite": 0.8,
+        "blocks_used": 7,
+        "factor_agreement_positive_share": 0.71,
+        "fundamental_coverage": 1.0,
+        "block_momentum": 1.25,
+        "is_chosen_candidate": True,
+        "shortlisted": True,
+        "portfolio_action": "BUY",
+    }])
+    trades = pd.DataFrame([{
+        "trade_id": 7,
+        "ticker": "AAA",
+        "name": "Alpha",
+        "sector": "Technology",
+        "signal_id": "2025-01-02:AAA",
+        "signal_date": "2025-01-02",
+        "entry_date": "2025-01-03",
+        "entry_price": 101.0,
+        "exit_date": "2025-02-14",
+        "exit_price": 111.0,
+        "shares": 10.0,
+        "cost_basis": 1010.0,
+        "proceeds": 1110.0,
+        "pnl": 100.0,
+        "return_pct": 100.0 / 1010.0,
+        "bars_held": 30,
+        "exit_reason": "signal weakened",
+        "av_verdict": "confirmed",
+    }])
+
+    outcomes = lifecycle.build_signal_outcomes(decisions, trades)
+    assert len(outcomes) == 1
+    row = outcomes.iloc[0]
+    assert row["feature_link_status"] == "linked"
+    assert bool(row["learning_eligible"])
+    assert row["closed_outcome"] == "win"
+    assert row["signal_composite"] == 0.8
+    assert row["signal_block_momentum"] == 1.25
+    assert row["exit_date"] == "2025-02-14"
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        decision_path = root / "decision_history.csv"
+        trades_path = root / "trades.csv"
+        output_path = root / "signal_outcomes.csv"
+        decisions.to_csv(decision_path, index=False)
+        trades.to_csv(trades_path, index=False)
+        first = lifecycle.reconcile_signal_outcomes(decision_path, trades_path, output_path)
+        second = lifecycle.reconcile_signal_outcomes(decision_path, trades_path, output_path)
+        saved = pd.read_csv(output_path)
+        assert first["linked_trades"] == second["linked_trades"] == 1
+        assert first["learning_eligible_trades"] == 1
+        assert len(saved) == 1, "reconciliation must not append duplicate outcomes"
+
+
+def test_legacy_closed_trades_are_kept_but_not_eligible_for_learning():
+    trades = pd.DataFrame([{
+        "trade_id": 1,
+        "ticker": "OLD",
+        "entry_date": "2024-01-02",
+        "exit_date": "2024-02-02",
+        "pnl": 25.0,
+        "return_pct": 0.05,
+    }])
+    outcomes = lifecycle.build_signal_outcomes(pd.DataFrame(), trades)
+    assert len(outcomes) == 1, "legacy trade should remain auditable"
+    assert outcomes.iloc[0]["feature_link_status"] == "missing_signal_id"
+    assert outcomes.iloc[0]["closed_outcome"] == "win"
+    assert not bool(outcomes.iloc[0]["learning_eligible"])
+
+
+def test_append_trades_upgrades_old_schema_and_deduplicates_trade_ids():
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "trades.csv"
+        pd.DataFrame([{"trade_id": 1, "ticker": "OLD", "pnl": 5.0}]).to_csv(
+            path, index=False
+        )
+        portfolio.append_trades([{
+            "trade_id": 2, "ticker": "AAA", "pnl": 10.0,
+            "signal_date": "2025-01-02", "signal_id": "2025-01-02:AAA",
+        }], path)
+        # Simulate a retried run writing the same close with the final record.
+        portfolio.append_trades([{
+            "trade_id": 2, "ticker": "AAA", "pnl": 12.0,
+            "signal_date": "2025-01-02", "signal_id": "2025-01-02:AAA",
+        }], path)
+        saved = pd.read_csv(path)
+        assert len(saved) == 2
+        assert "signal_id" in saved.columns and "signal_date" in saved.columns
+        assert pd.isna(saved.loc[saved["trade_id"] == 1, "signal_id"]).all()
+        assert saved.loc[saved["trade_id"] == 2, "pnl"].iloc[0] == 12.0
 
 
 # ---------------------------------------------------------------------------

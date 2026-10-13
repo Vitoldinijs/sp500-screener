@@ -391,12 +391,33 @@ class Ladder:
 # Reporting helpers
 # ---------------------------------------------------------------------------
 def append_trades(trades: list[dict], path: Path) -> None:
+    """Persist closed trades while safely upgrading older CSV schemas.
+
+    New trade records carry lifecycle IDs that older CSV columns may not
+    contain. Rewriting the union of old/new columns prevents the header from
+    becoming misaligned. Deduplication by trade_id also makes a retried daily
+    run idempotent if it wrote a trade before state was saved.
+    """
     if not trades:
         return
-    df = pd.DataFrame(trades)
+
+    incoming = pd.DataFrame(trades)
     path.parent.mkdir(parents=True, exist_ok=True)
-    header = not path.exists()
-    df.to_csv(path, mode="a", header=header, index=False)
+    if path.exists():
+        existing = pd.read_csv(path)
+        combined = pd.concat([existing, incoming], ignore_index=True, sort=False)
+    else:
+        combined = incoming
+
+    if "trade_id" in combined.columns:
+        has_id = combined["trade_id"].notna()
+        identified = combined.loc[has_id].drop_duplicates(
+            subset=["trade_id"], keep="last"
+        )
+        unidentified = combined.loc[~has_id]
+        combined = pd.concat([unidentified, identified], ignore_index=True, sort=False)
+
+    combined.to_csv(path, index=False)
 
 
 def append_equity(row: dict, path: Path) -> None:

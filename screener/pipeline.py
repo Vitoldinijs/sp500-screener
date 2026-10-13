@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from . import benchmark as bmod
-from . import excel_report, factors, learn, portfolio, scoring, universe
+from . import excel_report, factors, learn, lifecycle, portfolio, scoring, universe
 from .config import Config, ensure_dirs
 from .data import alpha_vantage as av
 from .data import fundamentals as fund_mod
@@ -202,6 +202,19 @@ def run_daily(cfg: Config, allow_network: bool = True,
         _build_report(cfg, state, scored, meta, close_wide)
     _append_run_log(cfg, meta, state)
     _append_decision_history(cfg, scored, state, data_date, chosen, shortlist, meta)
+    outcome_summary = lifecycle.reconcile_signal_outcomes(
+        cfg.path("decision_history_csv"),
+        cfg.path("trades_csv"),
+        cfg.path("signal_outcomes_csv"),
+    )
+    if outcome_summary["closed_trades"]:
+        _log(
+            "lifecycle outcomes: {}/{} linked; {} eligible for future evaluation".format(
+                outcome_summary["linked_trades"],
+                outcome_summary["closed_trades"],
+                outcome_summary["learning_eligible_trades"],
+            )
+        )
     return meta
 
 

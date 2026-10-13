@@ -130,6 +130,7 @@ paths:
   screen_csv: "state/last_screen.csv"             # committed: today's ranking
   factor_history_csv: "state/factor_history.csv"  # legacy path; not used for fixed-horizon labels
   decision_history_csv: "state/decision_history.csv" # daily scores, actions and realized lifecycle outcomes
+  signal_outcomes_csv: "state/signal_outcomes.csv" # closed trades linked to entry-time signals
   fundamentals_csv: "state/fundamentals.csv"      # committed weekly -> PIT hist
   weights_history: "state/weights_history.csv"    # committed: learning log
   run_log: "state/run_log.csv"                    # committed: one row per run

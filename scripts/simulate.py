@@ -308,6 +308,29 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
     elif stats["days_live"] and decision_history["data_date"].nunique() < stats["days_live"] - 1:
         failures.append("decision history does not cover most simulated run dates")
 
+    # The realised-outcome ledger must cover every closed trade exactly once.
+    outcome_path = cfg.path("signal_outcomes_csv")
+    if not outcome_path.exists():
+        failures.append("no lifecycle outcome ledger was produced")
+    else:
+        outcomes = pipeline._load_csv(outcome_path)
+        if not trades.empty and outcomes.empty:
+            failures.append("closed trades exist but lifecycle outcome ledger is empty")
+        elif not outcomes.empty:
+            if "trade_id" not in outcomes or "feature_link_status" not in outcomes:
+                failures.append("lifecycle outcome ledger is missing its trade/link keys")
+            elif outcomes["trade_id"].duplicated().any():
+                failures.append("lifecycle outcome ledger contains duplicate trade IDs")
+            elif not trades.empty and len(outcomes) != trades["trade_id"].nunique():
+                failures.append("lifecycle outcome ledger does not cover every closed trade")
+            if "learning_eligible" in outcomes.columns:
+                eligible = outcomes["learning_eligible"].fillna(False).astype(bool)
+                linked = outcomes["feature_link_status"].isin(
+                    ["linked", "linked_reconstructed"]
+                )
+                if (eligible & ~linked).any():
+                    failures.append("a learning-eligible outcome has no linked entry signal")
+
     xlsx = cfg.path("excel_report")
     if xlsx.exists():
         print(f"\n  workbook: {xlsx}  ({xlsx.stat().st_size / 1024:,.0f} KB)")
