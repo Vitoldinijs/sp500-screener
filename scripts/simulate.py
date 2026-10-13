@@ -32,6 +32,7 @@ Exit code is non-zero if any invariant broke, so CI can gate on it.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -330,6 +331,20 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
                 )
                 if (eligible & ~linked).any():
                     failures.append("a learning-eligible outcome has no linked entry signal")
+
+    evaluation_path = cfg.path("lifecycle_evaluation_json")
+    if not evaluation_path.exists():
+        failures.append("no lifecycle evaluation report was produced")
+    else:
+        try:
+            evaluation_report = json.loads(evaluation_path.read_text(encoding="utf-8"))
+            report_count = int(evaluation_report.get("counts", {}).get("closed_trades", -1))
+            if report_count != len(trades):
+                failures.append("lifecycle evaluation closed-trade count disagrees with trade ledger")
+            if evaluation_report.get("learning_enabled") is not False:
+                failures.append("lifecycle evaluation must not enable automatic learning")
+        except (OSError, ValueError, TypeError) as exc:
+            failures.append(f"lifecycle evaluation report is invalid JSON: {exc}")
 
     xlsx = cfg.path("excel_report")
     if xlsx.exists():
