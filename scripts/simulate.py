@@ -131,9 +131,13 @@ def check_invariants(cfg: Config, state, trades: pd.DataFrame, day: str) -> None
     # No holding-age invariant: positions exit only on signal/data-risk rules.
 
     # --- the accounting identity ----------------------------------------
-    realised = 0.0
+    realised_closed = 0.0
     if trades is not None and not trades.empty and "pnl" in trades:
-        realised = float(pd.to_numeric(trades["pnl"], errors="coerce").sum())
+        realised_closed = float(pd.to_numeric(trades["pnl"], errors="coerce").sum())
+    realised_partial = float(sum(
+        float(p.get("cumulative_realized_pnl", 0.0)) for p in state.positions
+    ))
+    realised = realised_closed + realised_partial
     unrealised = float(sum(
         float(p.get("last_value", p["cost_basis"])) - float(p["cost_basis"])
         for p in state.positions

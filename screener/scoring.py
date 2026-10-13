@@ -19,6 +19,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .allocation import allocation_multiplier
+
 # Metrics that are meaningless when non-positive (loss-making / no book value).
 POSITIVE_ONLY = {"pe_ratio", "pb_ratio", "ps_ratio", "ev_ebitda"}
 
@@ -74,14 +76,32 @@ def apply_filters(metrics: pd.DataFrame, cfg) -> pd.DataFrame:
         reasons = reasons.where(~(mask & (reasons == "")), text)
 
     def col(name: str) -> pd.Series:
-        return pd.to_numeric(m[name], errors="coerce")
+        if name not in m.columns:
+            return pd.Series(np.nan, index=m.index, dtype=float)
+        return pd.to_numeric(m[name], errors="coerce").replace([np.inf, -np.inf], np.nan)
 
-    fail(col("last_close") < min_price, f"price < ${min_price:g}")
-    fail(col("history_days") < min_hist, "insufficient price history")
-    if "dollar_volume" in m:
-        fail(col("dollar_volume") < min_dvol, "illiquid")
-    if "market_cap" in m:
-        fail(col("market_cap") < min_mcap, "market cap too small")
+    price = col("last_close")
+    fail(price.isna(), "price data unavailable")
+    fail(price < min_price, f"price < ${min_price:g}")
+    history = col("history_days")
+    fail(history.isna(), "insufficient price history")
+    fail(history < min_hist, "insufficient price history")
+
+    # Liquidity and market capitalisation are mandatory entry safety checks
+    # by default. Missing provider data must not silently disable a filter.
+    require_dvol = bool(f.get("require_dollar_volume", True))
+    if "dollar_volume" in m.columns or require_dvol:
+        dvol = col("dollar_volume")
+        if require_dvol:
+            fail(dvol.isna(), "liquidity data unavailable")
+        fail(dvol < min_dvol, "illiquid")
+
+    require_mcap = bool(f.get("require_market_cap", True))
+    if "market_cap" in m.columns or require_mcap:
+        mcap = col("market_cap")
+        if require_mcap:
+            fail(mcap.isna(), "market cap unavailable")
+        fail(mcap < min_mcap, "market cap too small")
     if "net_debt_ebitda" in m:
         max_ndte = _num(f.get("max_net_debt_ebitda"), 4.0)
         # NaN (no meaningful EBITDA to compare against — common for banks,
@@ -182,6 +202,15 @@ def pick_candidate(
     cap = int(strat.get("max_positions_per_sector", 99))
     allow_dupes = bool(strat.get("allow_duplicate_tickers", False))
 
+    eligible_mask = (
+        scored.get("eligible", pd.Series(False, index=scored.index))
+        .fillna(False).astype(bool)
+        & pd.to_numeric(
+            scored.get("composite", pd.Series(np.nan, index=scored.index)),
+            errors="coerce",
+        ).notna()
+    )
+    eligible_count = int(eligible_mask.sum())
     shortlist = []
     for ticker, row in scored.iterrows():
         if not bool(row.get("eligible", False)) or pd.isna(row.get("composite")):
@@ -191,12 +220,22 @@ def pick_candidate(
         sector = str(row.get("sector", "Unknown"))
         if sector_counts.get(sector, 0) >= cap:
             continue
+        rank_value = pd.to_numeric(pd.Series([row.get("rank")]), errors="coerce").iloc[0]
+        if pd.notna(rank_value) and eligible_count > 1:
+            rank_percentile = float((eligible_count - float(rank_value)) / (eligible_count - 1))
+        elif pd.notna(rank_value) and eligible_count == 1:
+            rank_percentile = 1.0
+        else:
+            rank_percentile = None
+        weight = allocation_multiplier(rank_percentile, strat)
         shortlist.append(
             {
                 "ticker": ticker,
                 "sector": sector,
                 "composite": float(row["composite"]),
                 "rank": int(row.get("rank", 0) or 0),
+                "rank_percentile": rank_percentile,
+                "allocation_weight": weight,
                 "last_close": float(row["last_close"]),
                 "blocks": {
                     b: (None if pd.isna(row.get(f"block_{b}")) else float(row[f"block_{b}"]))

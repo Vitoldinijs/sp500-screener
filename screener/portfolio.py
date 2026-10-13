@@ -8,8 +8,9 @@ Mechanics
   *pending order* filled at day T+1's open. Nothing is ever transacted at a
   price that was used to generate the signal, so the equity curve carries no
   lookahead bias.
-* Position size = equity / n_slots at entry, so gains compound and slots stay
-  roughly equal-weighted.
+* Position targets are rank-weighted and periodically rebalanced. A configurable
+  cash reserve and slot normalisation prevent the strongest ranks from taking
+  more than the portfolio can fund.
 * Slippage is charged in basis points on both legs; commission is configurable
   (US brokers are mostly $0).
 
@@ -25,6 +26,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from .allocation import allocation_multiplier
 
 STATE_VERSION = 2
 
@@ -82,7 +85,12 @@ class PortfolioState:
 
     @property
     def reserved_cash(self) -> float:
-        return sum(float(o["notional"]) for o in self.pending_orders if o["side"] == "BUY")
+        return sum(
+            float(o.get("notional", 0.0))
+            for o in self.pending_orders
+            if o["side"] == "BUY"
+            or (o["side"] == "REBALANCE" and o.get("action") == "increase")
+        )
 
     @property
     def available_cash(self) -> float:
@@ -129,13 +137,27 @@ class Ladder:
         return float(raw) if self.fractional else float(np.floor(raw))
 
     # -- step 1: fill orders queued yesterday ------------------------------
+    @staticmethod
+    def _order_priority(order: dict) -> int:
+        # Free cash first, then the next new entry, then increase existing
+        # allocations with whatever cash remains.
+        if order.get("side") == "SELL":
+            return 0
+        if order.get("side") == "REBALANCE" and order.get("action") == "reduce":
+            return 1
+        if order.get("side") == "BUY":
+            return 2
+        if order.get("side") == "REBALANCE":
+            return 3
+        return 4
+
     def fill_pending(self, bar: pd.DataFrame, trade_date: date) -> list[dict]:
         """Execute pending orders at today's OPEN. `bar` is indexed by ticker
         with columns open/close."""
         events = []
         still_pending = []
 
-        for order in self.s.pending_orders:
+        for order in sorted(self.s.pending_orders, key=self._order_priority):
             t = order["ticker"]
             if t not in bar.index:
                 order["retries"] = int(order.get("retries", 0)) + 1
@@ -156,8 +178,13 @@ class Ladder:
 
             if order["side"] == "BUY":
                 events.append(self._execute_buy(order, px_open, trade_date))
-            else:
+            elif order["side"] == "SELL":
                 events.append(self._execute_sell(order, px_open, trade_date))
+            elif order["side"] == "REBALANCE":
+                events.append(self._execute_rebalance(order, px_open, trade_date))
+            else:
+                events.append({"event": "order_stale", "ticker": t,
+                               "reason": "unknown order side"})
 
         self.s.pending_orders = still_pending
         return [e for e in events if e]
@@ -181,6 +208,12 @@ class Ladder:
             "entry_date": trade_date.isoformat(),
             "entry_price": round(fill, 4),
             "cost_basis": round(cost, 2),
+            "cumulative_cost_basis": float(cost),
+            "cumulative_exit_proceeds": 0.0,
+            "cumulative_realized_pnl": 0.0,
+            "cumulative_shares_sold": 0.0,
+            "total_shares_bought": float(shares),
+            "allocation_weight": float(order.get("allocation_weight", 1.0)),
             "entry_bar": self.s.bar_count,
             "entry_score": order.get("entry_score"),
             "signal_date": order.get("signal_date"),
@@ -190,6 +223,7 @@ class Ladder:
             "av_verdict": order.get("av_verdict", "unverified"),
             "last_price": round(fill, 4),
             "last_value": round(shares * fill, 2),
+            "average_entry_price": round(fill, 4),
             "bars_held": 0,
         }
         self.s.next_trade_id += 1
@@ -204,10 +238,15 @@ class Ladder:
             return {"event": "order_stale", "ticker": order["ticker"]}
 
         fill = self._sell_price(px_open)
-        proceeds = pos["shares"] * fill - self.commission
-        self.s.cash += proceeds
-        pnl = proceeds - pos["cost_basis"]
-        ret = pnl / pos["cost_basis"] if pos["cost_basis"] else 0.0
+        proceeds_now = pos["shares"] * fill - self.commission
+        self.s.cash += proceeds_now
+        proceeds = float(pos.get("cumulative_exit_proceeds", 0.0)) + proceeds_now
+        total_cost_basis = float(pos.get("cumulative_cost_basis", pos["cost_basis"]))
+        shares_sold = float(pos.get("cumulative_shares_sold", 0.0)) + float(pos["shares"])
+        total_shares_bought = float(pos.get("total_shares_bought", shares_sold))
+        average_entry_price = total_cost_basis / total_shares_bought if total_shares_bought else pos["entry_price"]
+        pnl = proceeds - total_cost_basis
+        ret = pnl / total_cost_basis if total_cost_basis else 0.0
 
         self.trades.append({
             "trade_id": tid,
@@ -215,11 +254,11 @@ class Ladder:
             "name": pos.get("name", ""),
             "sector": pos.get("sector", "Unknown"),
             "entry_date": pos["entry_date"],
-            "entry_price": pos["entry_price"],
+            "entry_price": round(average_entry_price, 4),
             "exit_date": trade_date.isoformat(),
             "exit_price": round(fill, 4),
-            "shares": pos["shares"],
-            "cost_basis": round(pos["cost_basis"], 2),
+            "shares": round(shares_sold, 6),
+            "cost_basis": round(total_cost_basis, 2),
             "proceeds": round(proceeds, 2),
             "pnl": round(pnl, 2),
             "return_pct": round(ret, 6),
@@ -233,6 +272,89 @@ class Ladder:
         self.s.positions = [p for p in self.s.positions if p["trade_id"] != tid]
         return {"event": "sold", "ticker": pos["ticker"], "price": fill,
                 "pnl": pnl, "trade_id": tid, "reason": order.get("reason", "signal weakened")}
+
+
+    def _execute_rebalance(self, order: dict, px_open: float, trade_date: date) -> dict:
+        """Move a position toward its target dollar value at the next open."""
+        tid = order.get("trade_id")
+        pos = next((p for p in self.s.positions if p["trade_id"] == tid), None)
+        if pos is None:
+            return {"event": "order_stale", "ticker": order.get("ticker")}
+
+        old_shares = float(pos.get("shares", 0.0))
+        # Initialise cumulative fields for portfolio states created by older
+        # versions before any partial sale changes the remaining cost basis.
+        pos.setdefault("cumulative_cost_basis", float(pos.get("cost_basis", 0.0)))
+        pos.setdefault("cumulative_exit_proceeds", 0.0)
+        pos.setdefault("cumulative_realized_pnl", 0.0)
+        pos.setdefault("cumulative_shares_sold", 0.0)
+        pos.setdefault("total_shares_bought", old_shares)
+        pos.setdefault("average_entry_price", float(pos.get("entry_price", px_open)))
+        if old_shares <= 0:
+            return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                    "reason": "position has no shares"}
+
+        target_value = max(0.0, float(order.get("target_value", 0.0)))
+        desired_shares = target_value / px_open if px_open > 0 else old_shares
+        delta = desired_shares - old_shares
+
+        if delta < 0:
+            shares_to_sell = min(old_shares, -delta)
+            fill = self._sell_price(px_open)
+            proceeds = shares_to_sell * fill - self.commission
+            cost_basis = float(pos.get("cost_basis", 0.0))
+            cost_removed = cost_basis * shares_to_sell / old_shares
+            self.s.cash += proceeds
+            pos["shares"] = round(old_shares - shares_to_sell, 6)
+            pos["cost_basis"] = max(0.0, round(cost_basis - cost_removed, 2))
+            pos["cumulative_exit_proceeds"] = (
+                float(pos.get("cumulative_exit_proceeds", 0.0)) + proceeds
+            )
+            pos["cumulative_shares_sold"] = (
+                float(pos.get("cumulative_shares_sold", 0.0)) + shares_to_sell
+            )
+            pos["cumulative_realized_pnl"] = (
+                float(pos.get("cumulative_realized_pnl", 0.0)) + proceeds - cost_removed
+            )
+            event = {
+                "event": "rebalanced_down", "ticker": pos["ticker"],
+                "shares_sold": shares_to_sell, "price": fill, "proceeds": proceeds,
+            }
+        elif delta > 0:
+            fill = self._buy_price(px_open)
+            cash_available = max(0.0, self.s.cash - self.commission)
+            shares_to_buy = min(delta, self._shares(cash_available, fill))
+            if shares_to_buy <= 0:
+                return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                        "reason": "insufficient cash"}
+            cost = shares_to_buy * fill + self.commission
+            self.s.cash -= cost
+            old_cost_basis = float(pos.get("cost_basis", 0.0))
+            pos["shares"] = round(old_shares + shares_to_buy, 6)
+            pos["cost_basis"] = round(old_cost_basis + cost, 2)
+            pos["cumulative_cost_basis"] = (
+                float(pos.get("cumulative_cost_basis", old_cost_basis)) + cost
+            )
+            pos["total_shares_bought"] = (
+                float(pos.get("total_shares_bought", old_shares)) + shares_to_buy
+            )
+            total_bought = float(pos["total_shares_bought"])
+            pos["average_entry_price"] = (
+                float(pos["cumulative_cost_basis"]) / total_bought if total_bought else fill
+            )
+            event = {
+                "event": "rebalanced_up", "ticker": pos["ticker"],
+                "shares_bought": shares_to_buy, "price": fill, "cost": cost,
+            }
+        else:
+            return {"event": "rebalance_skipped", "ticker": pos["ticker"],
+                    "reason": "target already met"}
+
+        pos["last_price"] = round(px_open, 4)
+        pos["last_value"] = round(float(pos["shares"]) * px_open, 2)
+        pos["last_rebalance_bar"] = self.s.bar_count
+        pos["allocation_weight"] = float(order.get("allocation_weight", pos.get("allocation_weight", 1.0)))
+        return event
 
     # -- step 2: mark to market -------------------------------------------
     def mark_to_market(self, bar: pd.DataFrame) -> None:
@@ -288,8 +410,15 @@ class Ladder:
                 eligible = bool(row.get("eligible", False)) if pd.notna(row.get("eligible", False)) else False
                 rank = pd.to_numeric(pd.Series([row.get("rank")]), errors="coerce").iloc[0]
                 if not eligible:
-                    weak = True
                     review_detail = str(row.get("exclude_reason") or "screen eligibility lost")
+                    # Missing required provider data blocks new entries, but
+                    # must not itself force an existing position to exit.
+                    if "market cap unavailable" in review_detail or "liquidity data unavailable" in review_detail:
+                        p["weak_signal_runs"] = 0
+                        p["last_rank_percentile"] = None
+                        p["last_signal_review"] = "signal review paused: " + review_detail
+                        continue
+                    weak = True
                     rank_pct = None
                 elif pd.notna(rank) and eligible_count > 1:
                     rank_pct = float((eligible_count - float(rank)) / (eligible_count - 1))
@@ -328,25 +457,105 @@ class Ladder:
                 queued.append(order)
         return queued
 
+
+    def _cash_reserve_pct(self) -> float:
+        value = float(self.cfg.strategy.get("cash_reserve_pct", 0.10))
+        return min(0.50, max(0.0, value))
+
+    def _eligible_count(self, scored: pd.DataFrame | None) -> int:
+        if scored is None or scored.empty:
+            return 0
+        eligible = scored.get("eligible", pd.Series(False, index=scored.index)).fillna(False).astype(bool)
+        composite = pd.to_numeric(
+            scored.get("composite", pd.Series(np.nan, index=scored.index)),
+            errors="coerce",
+        )
+        return int((eligible & composite.notna()).sum())
+
+    def _weight_for_position(
+        self, position: dict, scored: pd.DataFrame | None, eligible_count: int,
+        pending_sell_ids: set,
+    ) -> float:
+        # A queued exit occupies a slot until its next-open fill, but should
+        # not distort the allocation normalisation for the remaining holdings.
+        if position.get("trade_id") in pending_sell_ids:
+            return 1.0
+        ticker = position.get("ticker")
+        if scored is not None and not scored.empty and ticker in scored.index:
+            row = scored.loc[ticker]
+            eligible = bool(row.get("eligible", False)) if pd.notna(row.get("eligible", False)) else False
+            rank = pd.to_numeric(pd.Series([row.get("rank")]), errors="coerce").iloc[0]
+            if eligible and pd.notna(rank) and eligible_count > 1:
+                pct = float((eligible_count - float(rank)) / (eligible_count - 1))
+                return allocation_multiplier(pct, self.cfg.strategy)
+            if eligible and pd.notna(rank) and eligible_count == 1:
+                return allocation_multiplier(1.0, self.cfg.strategy)
+            reason = str(row.get("exclude_reason") or "")
+            if "market cap unavailable" in reason or "liquidity data unavailable" in reason:
+                try:
+                    previous = float(position.get("allocation_weight", 1.0))
+                    return previous if np.isfinite(previous) and previous > 0 else 1.0
+                except (TypeError, ValueError):
+                    return 1.0
+            return allocation_multiplier(None, self.cfg.strategy)
+        try:
+            weight = float(position.get("allocation_weight", 1.0))
+            return weight if np.isfinite(weight) and weight > 0 else 1.0
+        except (TypeError, ValueError):
+            return 1.0
+
+    def _average_slot_weight(
+        self, scored: pd.DataFrame | None, candidate_weight: float | None = None,
+    ) -> float:
+        eligible_count = self._eligible_count(scored)
+        pending_sell_ids = {
+            o.get("trade_id") for o in self.s.pending_orders if o.get("side") == "SELL"
+        }
+        weights = [
+            self._weight_for_position(p, scored, eligible_count, pending_sell_ids)
+            for p in self.s.positions
+        ]
+        weights.extend(
+            max(0.1, float(o.get("allocation_weight", 1.0)))
+            for o in self.s.pending_orders if o.get("side") == "BUY"
+        )
+        if candidate_weight is not None:
+            weights.append(max(0.1, float(candidate_weight)))
+        remaining_slots = max(0, self.n_slots - len(weights))
+        weights.extend([1.0] * remaining_slots)
+        return max(sum(weights) / max(1, self.n_slots), 1e-9)
+
     # -- step 4: queue the entry ------------------------------------------
-    def schedule_entry(self, shortlist: list[dict], name_map: dict | None = None,
-                       signal_date: date | None = None) -> dict | None:
-        """Queue one BUY for the top shortlisted candidate, if a slot is free."""
+    def schedule_entry(
+        self, shortlist: list[dict], name_map: dict | None = None,
+        signal_date: date | None = None, scored: pd.DataFrame | None = None,
+    ) -> dict | None:
+        """Queue one rank-weighted BUY if a portfolio slot is free."""
         if self.s.open_slots(self.n_slots) <= 0 or not shortlist:
             return None
 
-        target = self.s.equity() / self.n_slots
+        pick = shortlist[0]
+        try:
+            weight = float(pick.get("allocation_weight", 1.0))
+        except (TypeError, ValueError):
+            weight = 1.0
+        if not np.isfinite(weight) or weight <= 0:
+            weight = 1.0
+        average_weight = self._average_slot_weight(scored, candidate_weight=weight)
+        base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
+        target = base_slot_value * weight / average_weight
         budget = min(target, self.s.available_cash)
         if budget < 25.0:                    # not worth a position
             return None
 
-        pick = shortlist[0]
         order = {
             "side": "BUY",
             "ticker": pick["ticker"],
             "sector": pick.get("sector", "Unknown"),
             "name": (name_map or {}).get(pick["ticker"], ""),
             "notional": round(budget, 2),
+            "allocation_weight": weight,
+            "rank_percentile": pick.get("rank_percentile"),
             "entry_score": pick.get("composite"),
             "rank": pick.get("rank"),
             "blocks": pick.get("blocks"),
@@ -355,10 +564,71 @@ class Ladder:
             "signal_id": f"{signal_date.isoformat()}:{pick['ticker']}" if signal_date else None,
             "av_verdict": pick.get("av_verdict", "unverified"),
             "av_reason": pick.get("av_reason", ""),
-            "reason": "top composite score",
+            "reason": "rank-weighted composite score",
         }
         self.s.pending_orders.append(order)
         return order
+
+    def schedule_rebalances(self, scored: pd.DataFrame | None = None) -> list[dict]:
+        """Queue material target-weight adjustments for the next session open."""
+        if scored is None or scored.empty:
+            return []
+
+        eligible_count = self._eligible_count(scored)
+        pending_sell_ids = {
+            o.get("trade_id") for o in self.s.pending_orders if o.get("side") == "SELL"
+        }
+        pending_rebalance_ids = {
+            o.get("trade_id") for o in self.s.pending_orders if o.get("side") == "REBALANCE"
+        }
+        average_weight = self._average_slot_weight(scored)
+        base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
+        min_change_pct = max(0.0, float(self.cfg.strategy.get("rebalance_threshold_pct", 0.15)))
+        min_notional = max(0.0, float(self.cfg.strategy.get("rebalance_min_notional", 50.0)))
+        interval = max(1, int(self.cfg.strategy.get("rebalance_interval_sessions", 5)))
+        reductions, increases = [], []
+
+        for position in self.s.positions:
+            tid = position.get("trade_id")
+            if tid in pending_sell_ids or tid in pending_rebalance_ids:
+                continue
+            # Do not resize a holding while its exit signal is being confirmed,
+            # nor when mandatory screen data is temporarily unavailable.
+            if int(position.get("weak_signal_runs", 0)) > 0:
+                continue
+            if position.get("ticker") in scored.index:
+                screen_reason = str(scored.loc[position["ticker"]].get("exclude_reason") or "")
+                if "market cap unavailable" in screen_reason or "liquidity data unavailable" in screen_reason:
+                    continue
+            last_rebalance = int(position.get("last_rebalance_bar", position.get("entry_bar", 0)))
+            if self.s.bar_count - last_rebalance < interval:
+                continue
+
+            weight = self._weight_for_position(position, scored, eligible_count, pending_sell_ids)
+            target_value = base_slot_value * weight / average_weight
+            current_value = float(position.get("last_value", position.get("cost_basis", 0.0)))
+            difference = target_value - current_value
+            if current_value <= 0 or abs(difference) < min_notional:
+                continue
+            if abs(difference) / max(current_value, 1.0) < min_change_pct:
+                continue
+
+            order = {
+                "side": "REBALANCE",
+                "action": "increase" if difference > 0 else "reduce",
+                "ticker": position["ticker"],
+                "trade_id": tid,
+                "target_value": round(target_value, 2),
+                "current_value": round(current_value, 2),
+                "notional": round(max(0.0, difference), 2),
+                "allocation_weight": weight,
+                "reason": "rank-weighted target allocation",
+            }
+            (increases if difference > 0 else reductions).append(order)
+
+        queued = reductions + increases
+        self.s.pending_orders.extend(queued)
+        return queued
 
     # -- full daily cycle --------------------------------------------------
     def run_day(
@@ -374,13 +644,17 @@ class Ladder:
         events = self.fill_pending(bar, trade_date)
         self.mark_to_market(bar)
         exits = self.schedule_exits(scored)
-        entry = self.schedule_entry(shortlist or [], name_map, signal_date=trade_date)
+        entry = self.schedule_entry(
+            shortlist or [], name_map, signal_date=trade_date, scored=scored
+        )
+        rebalances = self.schedule_rebalances(scored)
         self.s.last_run_date = trade_date.isoformat()
         return {
             "date": trade_date.isoformat(),
             "events": events,
             "exits_queued": len(exits),
             "entry_queued": entry["ticker"] if entry else None,
+            "rebalances_queued": len(rebalances),
             "cash": round(self.s.cash, 2),
             "positions": len(self.s.positions),
             "equity": round(self.s.equity(), 2),
