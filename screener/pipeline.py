@@ -89,7 +89,8 @@ def run_daily(cfg: Config, allow_network: bool = True,
     fund_asof = fund["asof"].max() if not fund.empty and "asof" in fund else None
     if fund.empty:
         _log("WARNING: no fundamentals yet — run `python -m screener weekly` first. "
-             "Scoring will fall back to price factors only.")
+             "Price factors can still be scored, but new entries are blocked until "
+             "market-cap data is available.")
     else:
         _log(f"fundamentals: {len(fund)} tickers, snapshot {fund_asof}")
 
@@ -161,6 +162,8 @@ def run_daily(cfg: Config, allow_network: bool = True,
              f"equity ${summary['equity']:,.2f}")
         if summary["entry_queued"]:
             _log(f"queued BUY {summary['entry_queued']} for next open")
+        if summary.get("rebalances_queued"):
+            _log(f"queued {summary['rebalances_queued']} rank-weighted rebalances for next open")
 
         portfolio.append_trades(ladder.trades, cfg.path("trades_csv"))
         state.save(cfg.path("portfolio_json"))
