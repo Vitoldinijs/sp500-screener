@@ -222,6 +222,7 @@ class Ladder:
             "av_verdict": order.get("av_verdict", "unverified"),
             "last_price": round(fill, 4),
             "last_value": round(shares * fill, 2),
+            "average_entry_price": round(fill, 4),
             "bars_held": 0,
         }
         self.s.next_trade_id += 1
@@ -316,10 +317,11 @@ class Ladder:
                         "reason": "insufficient cash"}
             cost = shares_to_buy * fill + self.commission
             self.s.cash -= cost
+            old_cost_basis = float(pos.get("cost_basis", 0.0))
             pos["shares"] = round(old_shares + shares_to_buy, 6)
-            pos["cost_basis"] = round(float(pos.get("cost_basis", 0.0)) + cost, 2)
+            pos["cost_basis"] = round(old_cost_basis + cost, 2)
             pos["cumulative_cost_basis"] = (
-                float(pos.get("cumulative_cost_basis", pos.get("cost_basis", 0.0))) + cost
+                float(pos.get("cumulative_cost_basis", old_cost_basis)) + cost
             )
             pos["total_shares_bought"] = (
                 float(pos.get("total_shares_bought", old_shares)) + shares_to_buy
