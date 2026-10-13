@@ -584,7 +584,7 @@ function renderPositions(d) {
   sec.appendChild(el('h2', { text: 'Open positions' }));
   sec.appendChild(el('div', {
     class: 'sub',
-    text: `${p.n_positions ?? 0} of ${p.n_slots ?? '—'} ladder slots filled · cash ${fmtUSD(p.cash)}`
+    text: `${p.n_positions ?? 0} of ${p.n_slots ?? '—'} ladder slots filled · cash ${fmtUSD(p.cash)} · target reserve ${fmtPct(d.strategy ? d.strategy.cash_reserve_pct ?? 0.10 : 0.10)}`
   }));
   if (!positions.length) {
     sec.classList.add('empty');
@@ -593,16 +593,22 @@ function renderPositions(d) {
     const table = el('table');
     table.appendChild(el('thead', {}, el('tr', {}, [
       el('th', { text: 'ticker' }), el('th', { text: 'sector' }),
+      el('th', { class: 'num', text: 'market value' }),
+      el('th', { class: 'num', text: 'weight ×' }),
       el('th', { class: 'num', text: 'entry' }), el('th', { class: 'num', text: 'entry px' }),
       el('th', { class: 'num', text: 'last px' }), el('th', { class: 'num', text: 'unrealised' }),
       el('th', { class: 'num', text: 'held' }),
     ])));
     const tbody = el('tbody');
     positions.forEach(row => {
-      const held = row.bars_held != null ? `${row.bars_held}/${d.strategy ? d.strategy.hold_days : '?'}d` : '—';
+      const held = row.bars_held != null ? `${row.bars_held} sessions` : '—';
+      const weight = row.allocation_weight == null || !Number.isFinite(Number(row.allocation_weight))
+        ? '1.00×' : `${Number(row.allocation_weight).toFixed(2)}×`;
       tbody.appendChild(el('tr', {}, [
         el('td', {}, el('span', { class: 'ticker-badge', text: row.ticker })),
         el('td', { class: 'name-cell', text: row.sector || '—' }),
+        el('td', { class: 'num', text: fmtUSD(row.last_value) }),
+        el('td', { class: 'num', text: weight }),
         el('td', { class: 'num', text: fmtDate(row.entry_date) }),
         el('td', { class: 'num', text: fmtUSD(row.entry_price) }),
         el('td', { class: 'num', text: fmtUSD(row.last_price) }),
@@ -618,6 +624,14 @@ function renderPositions(d) {
     const note = el('div', { class: 'sub', style: 'margin-top:1rem' });
     note.innerHTML = `Queued for next open: ` +
       pending.map(o => `<span class="ticker-badge">${o.ticker}</span> (${o.sector || 'sector n/a'})`).join(', ');
+    sec.appendChild(note);
+  }
+  const adjustments = p.pending_rebalances || [];
+  if (adjustments.length) {
+    const note = el('div', { class: 'sub', style: 'margin-top:0.5rem' });
+    note.textContent = 'Rank-weighted adjustments queued: ' + adjustments.map(o =>
+      `${o.ticker}: ${o.action === 'increase' ? '+' : '−'}${fmtUSD(o.notional)}`
+    ).join(' · ');
     sec.appendChild(note);
   }
   return sec;
