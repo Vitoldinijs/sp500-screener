@@ -69,6 +69,16 @@ def _read_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _records(df: pd.DataFrame, n: int | None = None, tail: bool = True) -> list[dict]:
     if df.empty:
         return []
@@ -87,6 +97,7 @@ def build_payload(cfg: Config) -> dict:
     run_log = _read_csv(cfg.path("run_log"))
     screen = _read_csv(cfg.path("screen_csv"))
     weights_hist = _read_csv(cfg.path("weights_history"))
+    lifecycle_evaluation = _read_json(cfg.path("lifecycle_evaluation_json"))
 
     stats = portfolio.performance_stats(equity, trades)
 
@@ -148,6 +159,7 @@ def build_payload(cfg: Config) -> dict:
         "recent_trades": list(reversed(_records(trades, MAX_TRADE_ROWS))),
         "top_candidates": top_candidates,
         "factor_weights": cfg.weights,
+        "lifecycle_evaluation": lifecycle_evaluation,
         "learning": {
             "enabled": cfg.learning.get("enabled"),
             "mode": cfg.learning.get("mode"),
