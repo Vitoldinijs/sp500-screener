@@ -106,7 +106,12 @@ learning:
   max_step_per_month: 0.05      # retained for future event-based learner
   lookback_months: 18           # walk-forward training window
   validation_months: 3          # out-of-sample check window
-  min_trades_for_update: 40     # need this many closed trades before tuning
+  min_trades_for_update: 40     # guardrail for a future learner
+  min_trades_for_evaluation: 40 # minimum usable completed trades for assessment
+  min_training_trades: 20       # strict pre-validation sample size
+  min_validation_trades: 10     # minimum later-period sample size
+  validation_fraction: 0.30     # latest signal dates held out for temporal review
+  min_factor_observations: 8    # minimum observations before reporting a correlation
   rollback_if_worse: true       # revert if validation Sharpe drops
 
 # ---- Data sources ----------------------------------------------------------
@@ -131,6 +136,7 @@ paths:
   factor_history_csv: "state/factor_history.csv"  # legacy path; not used for fixed-horizon labels
   decision_history_csv: "state/decision_history.csv" # daily scores, actions and realized lifecycle outcomes
   signal_outcomes_csv: "state/signal_outcomes.csv" # closed trades linked to entry-time signals
+  lifecycle_evaluation_json: "state/lifecycle_evaluation.json" # descriptive signal-quality review
   fundamentals_csv: "state/fundamentals.csv"      # committed weekly -> PIT hist
   weights_history: "state/weights_history.csv"    # committed: learning log
   run_log: "state/run_log.csv"                    # committed: one row per run
