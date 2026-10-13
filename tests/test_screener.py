@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from screener import evaluation, factors, learn, lifecycle, portfolio, scoring  # noqa: E402
+from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -177,6 +177,48 @@ def test_filters_exclude_and_explain():
     assert (out["eligible"] & (out["exclude_reason"] != "")).sum() == 0
 
 
+def test_missing_mandatory_entry_safety_data_fails_closed():
+    cfg = _cfg()
+    uni, px, fund = _fixture(n=30)
+    metrics = factors.build_metrics(px, fund, uni)
+    metrics.loc[metrics.index[0], "dollar_volume"] = np.nan
+    metrics.loc[metrics.index[1], "market_cap"] = np.nan
+
+    out = scoring.apply_filters(metrics, cfg)
+    assert not bool(out.iloc[0]["eligible"])
+    assert "liquidity data unavailable" in out.iloc[0]["exclude_reason"]
+    assert not bool(out.iloc[1]["eligible"])
+    assert "market cap unavailable" in out.iloc[1]["exclude_reason"]
+
+    # If the provider omits the entire column, the configured market-cap
+    # filter remains active rather than disappearing silently.
+    no_cap = scoring.apply_filters(metrics.drop(columns=["market_cap"]), cfg)
+    assert not no_cap["eligible"].any()
+    assert no_cap["exclude_reason"].str.contains("market cap unavailable").all()
+
+
+def test_allocation_multiplier_and_entry_notional_follow_rank_strength():
+    cfg = _cfg()
+    weak = allocation.allocation_multiplier(0.0, cfg.strategy)
+    strong = allocation.allocation_multiplier(1.0, cfg.strategy)
+    assert strong > weak
+    assert abs(weak - cfg.strategy["allocation_min_multiplier"]) < TOL
+    assert abs(strong - cfg.strategy["allocation_max_multiplier"]) < TOL
+
+    def queued_notional(weight):
+        state = portfolio.PortfolioState.new(10_000.0)
+        ladder = portfolio.Ladder(cfg, state)
+        order = ladder.schedule_entry(
+            [{"ticker": "AAA", "sector": "Tech", "composite": 1.0,
+              "allocation_weight": weight, "last_close": 100.0}],
+            signal_date=date(2025, 1, 2),
+        )
+        assert order is not None
+        return order["notional"]
+
+    assert queued_notional(strong) > queued_notional(weak)
+
+
 def test_composite_renormalises_over_missing_blocks():
     """A name missing a whole block must not be silently penalised to zero."""
     cfg = _cfg()
@@ -257,6 +299,67 @@ def test_orders_fill_at_next_open_not_signal_close():
         f"must fill at day-2 open (120), got {pos['entry_price']}"
     )
     assert pos["entry_price"] != 110.0, "must never fill at the signal close"
+
+
+def test_rebalancing_moves_capital_toward_higher_ranked_positions():
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame({"open": [100.0, 100.0], "close": [100.0, 100.0]},
+                       index=["AAA", "BBB"])
+    ladder.run_day(
+        bar.loc[["AAA"]], date(2025, 1, 2),
+        shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 0.5,
+                    "allocation_weight": 1.0, "last_close": 100.0}],
+    )
+    ladder.run_day(bar.loc[["AAA"]], date(2025, 1, 3))
+    initial_shares = state.positions[0]["shares"]
+
+    ranks = pd.DataFrame(
+        {"eligible": [True, True], "composite": [1.0, 0.5], "rank": [1, 2]},
+        index=["AAA", "BBB"],
+    )
+    for i in range(5):
+        ladder.run_day(bar, (pd.Timestamp("2025-01-04") + pd.Timedelta(days=i)).date(),
+                       scored=ranks)
+    queued = [o for o in state.pending_orders if o.get("side") == "REBALANCE"]
+    assert queued, "a materially underweight, top-ranked position should be increased"
+    assert any(o.get("action") == "increase" for o in queued)
+
+    ladder.run_day(bar, date(2025, 1, 9), scored=ranks)
+    assert state.positions[0]["shares"] > initial_shares
+    assert state.cash >= -0.01
+    assert state.positions[0]["cumulative_cost_basis"] >= state.positions[0]["cost_basis"]
+
+
+def test_partial_rebalance_is_included_in_the_final_trade_outcome():
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame({"open": [100.0], "close": [100.0]}, index=["AAA"])
+    ladder.run_day(
+        bar, date(2025, 1, 2),
+        shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 0.5,
+                    "allocation_weight": 1.0, "last_close": 100.0}],
+    )
+    ladder.run_day(bar, date(2025, 1, 3))
+    pos = state.positions[0]
+    total_bought = pos["total_shares_bought"]
+    ladder._execute_rebalance(
+        {"side": "REBALANCE", "trade_id": pos["trade_id"],
+         "target_value": pos["last_value"] * 0.5, "allocation_weight": 0.8},
+        100.0, date(2025, 1, 4),
+    )
+    expected_proceeds = pos["cumulative_exit_proceeds"]
+    state.pending_orders.append(
+        {"side": "SELL", "ticker": "AAA", "trade_id": pos["trade_id"],
+         "reason": "test close", "notional": 0.0}
+    )
+    ladder.fill_pending(bar, date(2025, 1, 5))
+    trade = ladder.trades[0]
+    assert abs(trade["proceeds"] - expected_proceeds) > 0.01
+    assert abs(trade["pnl"] - (trade["proceeds"] - trade["cost_basis"])) < 0.01
+    assert abs(trade["shares"] - total_bought) < 1e-5
 
 
 def test_cash_and_equity_accounting_is_exact():
