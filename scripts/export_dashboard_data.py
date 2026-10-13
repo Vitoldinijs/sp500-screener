@@ -104,7 +104,8 @@ def build_payload(cfg: Config) -> dict:
     # --- positions -----------------------------------------------------
     pos_fields = ("ticker", "name", "sector", "entry_date", "entry_price",
                   "shares", "cost_basis", "last_price", "last_value",
-                  "unrealised_pct", "bars_held", "entry_score")
+                  "unrealised_pct", "bars_held", "entry_score",
+                  "allocation_weight", "average_entry_price", "last_rank_percentile")
     positions = [{k: p.get(k) for k in pos_fields} for p in state.positions]
     positions.sort(key=lambda p: p.get("entry_date") or "", reverse=True)
 
@@ -112,6 +113,11 @@ def build_payload(cfg: Config) -> dict:
                    "rank", "reason", "av_verdict", "av_reason")
     pending = [{k: o.get(k) for k in pend_fields}
                for o in state.pending_orders if o.get("side") == "BUY"]
+    pending_rebalances = [
+        {k: o.get(k) for k in ("ticker", "action", "target_value", "current_value",
+                               "notional", "allocation_weight", "reason")}
+        for o in state.pending_orders if o.get("side") == "REBALANCE"
+    ]
 
     # --- top candidates from the latest screen --------------------------
     top_candidates = []
@@ -144,6 +150,9 @@ def build_payload(cfg: Config) -> dict:
             "start_capital": strat.get("start_capital"),
             "n_slots": strat.get("n_slots"),
             "max_positions_per_sector": strat.get("max_positions_per_sector"),
+            "cash_reserve_pct": strat.get("cash_reserve_pct", 0.10),
+            "allocation_min_multiplier": strat.get("allocation_min_multiplier", 0.60),
+            "allocation_max_multiplier": strat.get("allocation_max_multiplier", 1.80),
         },
         "stats": stats,
         "portfolio": {
@@ -153,6 +162,7 @@ def build_payload(cfg: Config) -> dict:
             "n_slots": int(strat.get("n_slots", 0)),
             "positions": positions,
             "pending_orders": pending,
+            "pending_rebalances": pending_rebalances,
             "sector_counts": state.sector_counts,
         },
         "equity_curve": _records(equity, MAX_EQUITY_ROWS),
