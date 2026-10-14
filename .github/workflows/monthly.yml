@@ -1,11 +1,10 @@
 # ============================================================================
-#  Monthly self-tuning of the factor weights.
+#  Monthly lifecycle-based factor-weight learning.
 #
-#  Reconstructs what each factor block would have predicted historically,
-#  measures its rank correlation with realised 21-day forward returns, and
-#  nudges the weights toward whatever actually worked — within hard bounds,
-#  by at most 0.05 per month, and only if an out-of-sample check agrees.
-#  Otherwise it rolls back and logs why. See screener/learn.py.
+#  Uses actual completed paper trades linked to their entry-time factor
+#  snapshots. Training labels must be closed before the chronological holdout
+#  begins. A proposal is accepted only if its held-out score/return rank
+#  correlation is positive and improves against current weights.
 #
 #  This is the one job that edits config.yml, so the diff shows exactly what
 #  the bot changed and you can revert any month you disagree with.
@@ -48,25 +47,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Restore the price cache
-        # Same reasoning as daily.yml: this job re-pulls the full price
-        # history to reconstruct historical scores for the IC walk-forward,
-        # so it benefits from the same cross-run cache just as much.
-        uses: actions/cache@v4
-        with:
-          path: state/cache/prices.csv.gz
-          key: price-cache-${{ github.run_id }}
-          restore-keys: |
-            price-cache-
-
       - name: Re-run the test suite before touching anything
         # If the code is broken, the last thing we want is to also rewrite the
         # weights based on it.
         run: python tests/test_screener.py
 
       - name: Tune the factor weights
-        env:
-          ALPHAVANTAGE_KEY: ${{ secrets.ALPHAVANTAGE_KEY }}
         run: |
           python -m screener monthly ${{ inputs.dry_run && '--dry-run' || '' }}
 
@@ -104,7 +90,7 @@ jobs:
               tail -3 state/weights_history.csv
               echo '```'
             else
-              echo "No tuning has happened yet — needs 40+ closed trades."
+              echo "No learning decision recorded yet — needs 40+ linked closed trades and a valid chronological holdout."
             fi
             echo ""
             echo "Current weights:"
