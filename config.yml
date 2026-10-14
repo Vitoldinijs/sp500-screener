@@ -12,7 +12,9 @@ strategy:
   exit_confirmation_observations: 3  # consecutive reviews needed before a signal-based exit
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
-  max_positions_per_sector: 5   # soft diversification cap (of n_slots)
+  max_positions_per_sector: 5   # hard count cap by sector
+  max_position_pct_equity: 0.08 # target exposure to one stock <= 8% of portfolio equity
+  max_sector_pct_equity: 0.25   # target sector exposure <= 25% of portfolio equity
   cash_reserve_pct: 0.10        # target cash buffer; the rest is allocated to open slots
   allocation_min_multiplier: 0.60 # relative target weight for the weakest eligible rank
   allocation_max_multiplier: 1.80 # relative target weight for the strongest eligible rank
