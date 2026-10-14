@@ -45,11 +45,16 @@ class PortfolioState:
     pending_orders: list = field(default_factory=list)
     next_trade_id: int = 1
     version: int = STATE_VERSION
+    peak_equity: float = 0.0
+    current_drawdown_pct: float = 0.0
+    drawdown_paused: bool = False
+    drawdown_pause_date: str | None = None
 
     # -- persistence -------------------------------------------------------
     @classmethod
     def new(cls, start_capital: float) -> "PortfolioState":
-        return cls(cash=float(start_capital), start_capital=float(start_capital))
+        capital = float(start_capital)
+        return cls(cash=capital, start_capital=capital, peak_equity=capital)
 
     @classmethod
     def load(cls, path: Path, start_capital: float) -> "PortfolioState":
@@ -135,6 +140,96 @@ class Ladder:
             return 0.0
         raw = notional / price
         return float(raw) if self.fractional else float(np.floor(raw))
+
+    def _equity_at_open(self, bar: pd.DataFrame) -> float:
+        """Estimate equity at today's open before pending orders are filled."""
+        equity = float(self.s.cash)
+        for position in self.s.positions:
+            value = float(position.get("last_value", position.get("cost_basis", 0.0)))
+            ticker = position.get("ticker")
+            if ticker in bar.index and "open" in bar.columns:
+                raw_open = pd.to_numeric(
+                    pd.Series([bar.loc[ticker, "open"]]), errors="coerce"
+                ).iloc[0]
+                if pd.notna(raw_open) and float(raw_open) > 0:
+                    value = float(position.get("shares", 0.0)) * float(raw_open)
+            equity += max(0.0, value)
+        return float(equity)
+
+    def _update_drawdown(self, equity: float, trade_date: date) -> list[dict]:
+        """Update the high-water mark and latch/unlatch the entry circuit breaker."""
+        try:
+            equity = float(equity)
+        except (TypeError, ValueError):
+            equity = self.s.equity()
+        if not np.isfinite(equity):
+            equity = self.s.equity()
+
+        try:
+            trigger = float(self.cfg.strategy.get("max_portfolio_drawdown_pct", 0.20))
+        except (TypeError, ValueError):
+            trigger = 0.20
+        try:
+            resume_below = float(self.cfg.strategy.get("drawdown_resume_below_pct", 0.12))
+        except (TypeError, ValueError):
+            resume_below = 0.12
+        trigger = float(np.clip(trigger if np.isfinite(trigger) else 0.20, 0.0, 0.99))
+        resume_below = float(np.clip(
+            resume_below if np.isfinite(resume_below) else 0.12, 0.0, trigger
+        ))
+
+        peak = float(self.s.peak_equity or 0.0)
+        if not np.isfinite(peak) or peak <= 0:
+            peak = max(float(self.s.start_capital), equity)
+        if equity > peak:
+            peak = equity
+        self.s.peak_equity = round(peak, 6)
+        drawdown = max(0.0, (peak - equity) / peak) if peak > 0 else 0.0
+        self.s.current_drawdown_pct = round(float(drawdown), 6)
+
+        events = []
+        if trigger <= 0 and self.s.drawdown_paused:
+            self.s.drawdown_paused = False
+            self.s.drawdown_pause_date = None
+            events.append({"event": "drawdown_protection_resumed",
+                           "reason": "circuit breaker disabled"})
+        elif self.s.drawdown_paused and drawdown <= resume_below:
+            self.s.drawdown_paused = False
+            self.s.drawdown_pause_date = None
+            events.append({
+                "event": "drawdown_protection_resumed",
+                "drawdown_pct": round(drawdown, 6),
+                "resume_below_pct": resume_below,
+            })
+        elif not self.s.drawdown_paused and trigger > 0 and drawdown >= trigger:
+            self.s.drawdown_paused = True
+            self.s.drawdown_pause_date = trade_date.isoformat()
+            events.append({
+                "event": "drawdown_protection_activated",
+                "drawdown_pct": round(drawdown, 6),
+                "trigger_pct": trigger,
+                "equity": round(equity, 2),
+            })
+        return events
+
+    def _cancel_risk_increasing_orders(self) -> list[dict]:
+        """Cancel queued buys/increases while preserving sales and reductions."""
+        kept, cancelled = [], []
+        for order in self.s.pending_orders:
+            risk_increasing = (
+                order.get("side") == "BUY"
+                or (order.get("side") == "REBALANCE" and order.get("action") == "increase")
+            )
+            if risk_increasing:
+                cancelled.append({
+                    "event": "order_cancelled",
+                    "ticker": order.get("ticker"),
+                    "reason": "portfolio drawdown protection paused risk-increasing orders",
+                })
+            else:
+                kept.append(order)
+        self.s.pending_orders = kept
+        return cancelled
 
     # -- step 1: fill orders queued yesterday ------------------------------
     @staticmethod
@@ -541,7 +636,7 @@ class Ladder:
         signal_date: date | None = None, scored: pd.DataFrame | None = None,
     ) -> dict | None:
         """Queue one rank-weighted BUY if a portfolio slot is free."""
-        if self.s.open_slots(self.n_slots) <= 0 or not shortlist:
+        if self.s.drawdown_paused or self.s.open_slots(self.n_slots) <= 0 or not shortlist:
             return None
 
         pick = shortlist[0]
@@ -555,7 +650,7 @@ class Ladder:
         base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
         target = base_slot_value * weight / average_weight
         equity = self.s.equity()
-        max_position = self._exposure_cap_value("max_position_pct_equity", 0.08)
+        max_position = self._exposure_cap_value("max_position_pct_equity", 0.15)
         sector_cap = self._exposure_cap_value("max_sector_pct_equity", 0.25)
         sector = str(pick.get("sector", "Unknown"))
         sector_value = sum(
@@ -728,7 +823,8 @@ class Ladder:
             }
             (increases if difference > 0 else reductions).append(order)
 
-        queued = reductions + increases
+        # Keep de-risking reductions, but do not add exposure while entries are paused.
+        queued = reductions + (increases if not self.s.drawdown_paused else [])
         self.s.pending_orders.extend(queued)
         return queued
 
@@ -743,8 +839,17 @@ class Ladder:
     ) -> dict:
         """Process one trading day. `bar` = today's open/close indexed by ticker."""
         self.s.bar_count += 1
-        events = self.fill_pending(bar, trade_date)
+        # Check opening prices before executing yesterday's orders, so an
+        # overnight gap cannot let stale BUY orders bypass the circuit breaker.
+        events = self._update_drawdown(self._equity_at_open(bar), trade_date)
+        if self.s.drawdown_paused:
+            events.extend(self._cancel_risk_increasing_orders())
+        events.extend(self.fill_pending(bar, trade_date))
         self.mark_to_market(bar)
+        # A close-time drawdown blocks new orders queued for the following open.
+        events.extend(self._update_drawdown(self.s.equity(), trade_date))
+        if self.s.drawdown_paused:
+            events.extend(self._cancel_risk_increasing_orders())
         exits = self.schedule_exits(scored)
         entry = self.schedule_entry(
             shortlist or [], name_map, signal_date=trade_date, scored=scored
@@ -760,6 +865,9 @@ class Ladder:
             "cash": round(self.s.cash, 2),
             "positions": len(self.s.positions),
             "equity": round(self.s.equity(), 2),
+            "peak_equity": round(self.s.peak_equity, 2),
+            "current_drawdown_pct": self.s.current_drawdown_pct,
+            "drawdown_paused": self.s.drawdown_paused,
         }
 
 
