@@ -462,6 +462,16 @@ class Ladder:
         value = float(self.cfg.strategy.get("cash_reserve_pct", 0.10))
         return min(0.50, max(0.0, value))
 
+    def _exposure_cap_value(self, config_key: str, default_pct: float) -> float:
+        try:
+            pct = float(self.cfg.strategy.get(config_key, default_pct))
+        except (TypeError, ValueError):
+            pct = default_pct
+        if not np.isfinite(pct):
+            pct = default_pct
+        pct = min(1.0, max(0.0, pct))
+        return self.s.equity() * pct
+
     def _eligible_count(self, scored: pd.DataFrame | None) -> int:
         if scored is None or scored.empty:
             return 0
@@ -544,14 +554,28 @@ class Ladder:
         average_weight = self._average_slot_weight(scored, candidate_weight=weight)
         base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
         target = base_slot_value * weight / average_weight
-        budget = min(target, self.s.available_cash)
+        equity = self.s.equity()
+        max_position = self._exposure_cap_value("max_position_pct_equity", 0.08)
+        sector_cap = self._exposure_cap_value("max_sector_pct_equity", 0.25)
+        sector = str(pick.get("sector", "Unknown"))
+        sector_value = sum(
+            float(p.get("last_value", p.get("cost_basis", 0.0)))
+            for p in self.s.positions if str(p.get("sector", "Unknown")) == sector
+        )
+        sector_value += sum(
+            float(o.get("notional", 0.0))
+            for o in self.s.pending_orders
+            if o.get("side") == "BUY" and str(o.get("sector", "Unknown")) == sector
+        )
+        sector_room = max(0.0, sector_cap - sector_value)
+        budget = min(target, max_position, sector_room, self.s.available_cash)
         if budget < 25.0:                    # not worth a position
             return None
 
         order = {
             "side": "BUY",
             "ticker": pick["ticker"],
-            "sector": pick.get("sector", "Unknown"),
+            "sector": sector,
             "name": (name_map or {}).get(pick["ticker"], ""),
             "notional": round(budget, 2),
             "allocation_weight": weight,
@@ -569,6 +593,85 @@ class Ladder:
         self.s.pending_orders.append(order)
         return order
 
+
+    def _position_target_values(
+        self, scored: pd.DataFrame, pending_sell_ids: set,
+    ) -> dict[int, float]:
+        """Calculate target values after per-name and per-sector exposure caps.
+
+        Existing holdings with a pending resize, a weak/paused signal, or
+        missing screen data are treated as fixed exposures for this run. The
+        remaining adjustable holdings absorb any sector-cap reduction.
+        """
+        equity = self.s.equity()
+        max_position = self._exposure_cap_value("max_position_pct_equity", 0.08)
+        max_sector = self._exposure_cap_value("max_sector_pct_equity", 0.25)
+        base_slot_value = equity * (1.0 - self._cash_reserve_pct()) / self.n_slots
+        average_weight = self._average_slot_weight(scored)
+        eligible_count = self._eligible_count(scored)
+
+        pending_rebalances = {
+            o.get("trade_id"): o for o in self.s.pending_orders
+            if o.get("side") == "REBALANCE"
+        }
+        pending_buy_by_sector: dict[str, float] = {}
+        for order in self.s.pending_orders:
+            if order.get("side") == "BUY":
+                sector = str(order.get("sector", "Unknown"))
+                pending_buy_by_sector[sector] = (
+                    pending_buy_by_sector.get(sector, 0.0) + float(order.get("notional", 0.0))
+                )
+
+        targets: dict[int, float] = {}
+        adjustable_by_sector: dict[str, list[int]] = {}
+        fixed_by_sector: dict[str, list[int]] = {}
+
+        for position in self.s.positions:
+            tid = int(position["trade_id"])
+            sector = str(position.get("sector", "Unknown"))
+            current_value = max(0.0, float(position.get("last_value", position.get("cost_basis", 0.0))))
+            if tid in pending_sell_ids:
+                targets[tid] = 0.0
+                continue
+            if tid in pending_rebalances:
+                targets[tid] = max(0.0, float(pending_rebalances[tid].get("target_value", current_value)))
+                fixed_by_sector.setdefault(sector, []).append(tid)
+                continue
+
+            row = scored.loc[position["ticker"]] if position.get("ticker") in scored.index else None
+            screen_reason = str(row.get("exclude_reason") or "") if row is not None else "screen data unavailable"
+            core_data_missing = (
+                "market cap unavailable" in screen_reason
+                or "liquidity data unavailable" in screen_reason
+                or "price data unavailable" in screen_reason
+                or "insufficient price history" in screen_reason
+                or row is None
+            )
+            if int(position.get("weak_signal_runs", 0)) > 0 or core_data_missing:
+                targets[tid] = current_value
+                fixed_by_sector.setdefault(sector, []).append(tid)
+                continue
+
+            weight = self._weight_for_position(position, scored, eligible_count, pending_sell_ids)
+            raw_target = base_slot_value * weight / average_weight
+            targets[tid] = min(max(0.0, raw_target), max_position)
+            adjustable_by_sector.setdefault(sector, []).append(tid)
+
+        # Leave capacity for already queued buys; scale only adjustable target
+        # values, so the next-open order set stays within each sector budget.
+        sectors = set(adjustable_by_sector) | set(fixed_by_sector) | set(pending_buy_by_sector)
+        for sector in sectors:
+            fixed_total = sum(targets[t] for t in fixed_by_sector.get(sector, []))
+            adjustable_ids = adjustable_by_sector.get(sector, [])
+            adjustable_total = sum(targets[t] for t in adjustable_ids)
+            room = max(0.0, max_sector - pending_buy_by_sector.get(sector, 0.0) - fixed_total)
+            if adjustable_total > room and adjustable_total > 0:
+                factor = room / adjustable_total
+                for tid in adjustable_ids:
+                    targets[tid] *= factor
+
+        return targets
+
     def schedule_rebalances(self, scored: pd.DataFrame | None = None) -> list[dict]:
         """Queue material target-weight adjustments for the next session open."""
         if scored is None or scored.empty:
@@ -581,8 +684,7 @@ class Ladder:
         pending_rebalance_ids = {
             o.get("trade_id") for o in self.s.pending_orders if o.get("side") == "REBALANCE"
         }
-        average_weight = self._average_slot_weight(scored)
-        base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
+        target_values = self._position_target_values(scored, pending_sell_ids)
         min_change_pct = max(0.0, float(self.cfg.strategy.get("rebalance_threshold_pct", 0.15)))
         min_notional = max(0.0, float(self.cfg.strategy.get("rebalance_min_notional", 50.0)))
         interval = max(1, int(self.cfg.strategy.get("rebalance_interval_sessions", 5)))
@@ -605,7 +707,7 @@ class Ladder:
                 continue
 
             weight = self._weight_for_position(position, scored, eligible_count, pending_sell_ids)
-            target_value = base_slot_value * weight / average_weight
+            target_value = float(target_values.get(int(tid), position.get("last_value", 0.0)))
             current_value = float(position.get("last_value", position.get("cost_basis", 0.0)))
             difference = target_value - current_value
             if current_value <= 0 or abs(difference) < min_notional:
