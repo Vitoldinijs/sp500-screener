@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-13T03:04:50+00:00",
+  "generated_at": "2026-10-14T01:17:41+00:00",
   "meta": {
-    "run_time": "2026-10-13 03:04 UTC",
+    "run_time": "2026-10-14 01:17 UTC",
     "data_date": "2026-10-12",
     "universe_size": 503,
     "eligible_count": 420,
@@ -11,9 +11,12 @@
   },
   "strategy": {
     "name": "ladder-momentum-value",
-    "start_capital": 10000,
+    "start_capital": 10000.0,
     "n_slots": 21,
-    "max_positions_per_sector": 5
+    "max_positions_per_sector": 5,
+    "cash_reserve_pct": 0.1,
+    "allocation_min_multiplier": 0.6,
+    "allocation_max_multiplier": 1.8
   },
   "stats": {
     "equity": 10434.29,
@@ -23,11 +26,11 @@
     "sharpe": 4.795254409179147,
     "volatility": 0.09028103209030917,
     "n_trades": 2,
-    "win_rate": 1,
+    "win_rate": 1.0,
     "avg_win": 0.210302,
-    "avg_loss": 0,
+    "avg_loss": 0.0,
     "profit_factor": null,
-    "avg_hold": 22,
+    "avg_hold": 22.0,
     "best_trade": 0.283009,
     "worst_trade": 0.137595,
     "days_live": 26,
@@ -51,7 +54,10 @@
         "last_value": 480.07,
         "unrealised_pct": -0.035074,
         "bars_held": 0,
-        "entry_score": 1.0536112764864434
+        "entry_score": 1.0536112764864434,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9904534606205251
       },
       {
         "ticker": "COF",
@@ -65,7 +71,10 @@
         "last_value": 501.79,
         "unrealised_pct": 0.012224,
         "bars_held": 1,
-        "entry_score": 0.44620741399904584
+        "entry_score": 0.44620741399904584,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9379474940334129
       },
       {
         "ticker": "BIIB",
@@ -79,7 +88,10 @@
         "last_value": 377.71,
         "unrealised_pct": 0.021224,
         "bars_held": 4,
-        "entry_score": 0.5555859964967851
+        "entry_score": 0.5555859964967851,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9665871121718377
       },
       {
         "ticker": "DLTR",
@@ -93,7 +105,10 @@
         "last_value": 508.57,
         "unrealised_pct": 0.037983,
         "bars_held": 5,
-        "entry_score": 0.5689208109667999
+        "entry_score": 0.5689208109667999,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9618138424821002
       },
       {
         "ticker": "AMZN",
@@ -107,7 +122,10 @@
         "last_value": 501.64,
         "unrealised_pct": 0.030972,
         "bars_held": 6,
-        "entry_score": 0.6121263867209685
+        "entry_score": 0.6121263867209685,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.964200477326969
       },
       {
         "ticker": "ILMN",
@@ -121,7 +139,10 @@
         "last_value": 492.47,
         "unrealised_pct": 0.012126,
         "bars_held": 6,
-        "entry_score": 0.6100566751620263
+        "entry_score": 0.6100566751620263,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9451073985680191
       },
       {
         "ticker": "GOOGL",
@@ -135,7 +156,10 @@
         "last_value": 500.83,
         "unrealised_pct": 0.034773,
         "bars_held": 8,
-        "entry_score": 0.8410723709429708
+        "entry_score": 0.8410723709429708,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9809069212410502
       },
       {
         "ticker": "ALL",
@@ -149,7 +173,10 @@
         "last_value": 492.05,
         "unrealised_pct": 0.016632,
         "bars_held": 8,
-        "entry_score": 0.6643531276938139
+        "entry_score": 0.6643531276938139,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9498806682577565
       },
       {
         "ticker": "TGT",
@@ -163,7 +190,10 @@
         "last_value": 474.55,
         "unrealised_pct": -0.019525,
         "bars_held": 8,
-        "entry_score": 0.6369924288836575
+        "entry_score": 0.6369924288836575,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9689737470167065
       },
       {
         "ticker": "INCY",
@@ -177,7 +207,10 @@
         "last_value": 437.05,
         "unrealised_pct": -0.097004,
         "bars_held": 8,
-        "entry_score": 0.662112373894027
+        "entry_score": 0.662112373894027,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9212410501193318
       },
       {
         "ticker": "NVDA",
@@ -191,7 +224,10 @@
         "last_value": 520.95,
         "unrealised_pct": 0.070856,
         "bars_held": 12,
-        "entry_score": 0.6809721702367264
+        "entry_score": 0.6809721702367264,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9403341288782816
       },
       {
         "ticker": "TRV",
@@ -205,7 +241,10 @@
         "last_value": 471.87,
         "unrealised_pct": -0.030032,
         "bars_held": 12,
-        "entry_score": 0.8197914702434592
+        "entry_score": 0.8197914702434592,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9832935560859188
       },
       {
         "ticker": "GOOG",
@@ -219,7 +258,10 @@
         "last_value": 500.37,
         "unrealised_pct": 0.028552,
         "bars_held": 12,
-        "entry_score": 0.776423257523575
+        "entry_score": 0.776423257523575,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.8424821002386634
       },
       {
         "ticker": "CNC",
@@ -233,7 +275,10 @@
         "last_value": 484.14,
         "unrealised_pct": -0.00481,
         "bars_held": 12,
-        "entry_score": 0.7994794227521653
+        "entry_score": 0.7994794227521653,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9761336515513126
       },
       {
         "ticker": "OXY",
@@ -247,7 +292,10 @@
         "last_value": 482.63,
         "unrealised_pct": 0.016299,
         "bars_held": 16,
-        "entry_score": 0.8840484909760108
+        "entry_score": 0.8840484909760108,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9785202863961814
       },
       {
         "ticker": "PSX",
@@ -261,7 +309,10 @@
         "last_value": 530.62,
         "unrealised_pct": 0.117353,
         "bars_held": 16,
-        "entry_score": 0.8298272742812407
+        "entry_score": 0.8298272742812407,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9880668257756563
       },
       {
         "ticker": "APA",
@@ -275,7 +326,10 @@
         "last_value": 508.99,
         "unrealised_pct": 0.071806,
         "bars_held": 16,
-        "entry_score": 0.7019116395441239
+        "entry_score": 0.7019116395441239,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9522673031026253
       },
       {
         "ticker": "MPC",
@@ -289,7 +343,10 @@
         "last_value": 574.73,
         "unrealised_pct": 0.204329,
         "bars_held": 19,
-        "entry_score": 0.9280120270881818
+        "entry_score": 0.9280120270881818,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 1.0
       },
       {
         "ticker": "VLO",
@@ -299,11 +356,14 @@
         "entry_price": 360.14,
         "shares": 1.321486,
         "cost_basis": 475.92,
-        "last_price": 436,
+        "last_price": 436.0,
         "last_value": 576.17,
         "unrealised_pct": 0.210645,
         "bars_held": 20,
-        "entry_score": 1.0984543480986035
+        "entry_score": 1.0984543480986035,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9976133651551312
       },
       {
         "ticker": "WDC",
@@ -314,10 +374,13 @@
         "shares": 1.031174,
         "cost_basis": 476.95,
         "last_price": 386.94,
-        "last_value": 399,
+        "last_value": 399.0,
         "unrealised_pct": -0.163434,
         "bars_held": 21,
-        "entry_score": 1.1354517347845436
+        "entry_score": 1.1354517347845436,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.711217183770883
       },
       {
         "ticker": "SNDK",
@@ -331,10 +394,14 @@
         "last_value": 458.18,
         "unrealised_pct": -0.040561,
         "bars_held": 22,
-        "entry_score": 1.6552479202277222
+        "entry_score": 1.6552479202277222,
+        "allocation_weight": null,
+        "average_entry_price": null,
+        "last_rank_percentile": 0.9594272076372315
       }
     ],
     "pending_orders": [],
+    "pending_rebalances": [],
     "sector_counts": {
       "Information Technology": 4,
       "Energy": 5,
@@ -348,12 +415,12 @@
   "equity_curve": [
     {
       "date": "2026-08-24",
-      "cash": 10000,
-      "positions_value": 0,
-      "equity": 10000,
+      "cash": 10000.0,
+      "positions_value": 0.0,
+      "equity": 10000.0,
       "n_positions": 0,
       "benchmark_close": 763.47,
-      "benchmark_equity": 10000
+      "benchmark_equity": 10000.0
     },
     {
       "date": "2026-08-25",
@@ -533,11 +600,11 @@
       "equity": 10385.05,
       "n_positions": 20,
       "benchmark_close": 774.83,
-      "benchmark_equity": 10174
+      "benchmark_equity": 10174.0
     },
     {
       "date": "2026-10-06",
-      "cash": 0,
+      "cash": 0.0,
       "positions_value": 10342.5,
       "equity": 10342.5,
       "n_positions": 21,
@@ -546,7 +613,7 @@
     },
     {
       "date": "2026-10-07",
-      "cash": 0,
+      "cash": 0.0,
       "positions_value": 10386.09,
       "equity": 10386.09,
       "n_positions": 21,
@@ -627,400 +694,400 @@
       "name": "Marathon Petroleum",
       "sector": "Energy",
       "last_close": 458.80999755859375,
-      "composite": 1.085664978718589,
-      "rank": 1,
+      "composite": 1.085693637696603,
+      "rank": 1.0,
       "eligible": true,
       "block_value": 0.5120832578157225,
       "block_quality": -0.5717172904210392,
       "block_growth": 2.358223271893585,
-      "block_momentum": 2.6059882363801843,
+      "block_momentum": 2.6059866209801457,
       "block_earnings": 0.8619880398903373,
-      "block_risk": -0.0833679945775344,
-      "block_technical": -0.3886315554559648
+      "block_risk": -0.0833896614152008,
+      "block_technical": -0.3882510103523907
     },
     {
       "ticker": "VLO",
       "name": "Valero Energy",
       "sector": "Energy",
-      "last_close": 436,
-      "composite": 1.078766031499238,
-      "rank": 2,
+      "last_close": 436.0,
+      "composite": 1.0787913033444203,
+      "rank": 2.0,
       "eligible": true,
       "block_value": 0.5257662583602529,
       "block_quality": -0.679609508263954,
       "block_growth": 2.788833462425317,
-      "block_momentum": 2.5929821228395054,
+      "block_momentum": 2.5929878701383973,
       "block_earnings": 0.6828504886879644,
-      "block_risk": 0.0972816850913184,
-      "block_technical": -0.6461414565724128
+      "block_risk": 0.0972587631605083,
+      "block_technical": -0.6458299194303707
     },
     {
       "ticker": "NTAP",
       "name": "NetApp",
       "sector": "Information Technology",
       "last_close": 239.17999267578125,
-      "composite": 0.9564768536065484,
-      "rank": 3,
+      "composite": 0.9565102773976096,
+      "rank": 3.0,
       "eligible": true,
       "block_value": -0.6400146282615523,
       "block_quality": 1.3664453736082312,
       "block_growth": 0.4239293519712278,
-      "block_momentum": 2.5380739155410934,
+      "block_momentum": 2.538065434056157,
       "block_earnings": 0.5556849430813415,
-      "block_risk": -0.2563698115640022,
-      "block_technical": -0.0258360927382602
+      "block_risk": -0.2563902764432996,
+      "block_technical": -0.0253711411220108
     },
     {
       "ticker": "MU",
       "name": "Micron Technology",
       "sector": "Information Technology",
       "last_close": 989.0399780273438,
-      "composite": 0.9377735635520826,
-      "rank": 4,
+      "composite": 0.9377756854861626,
+      "rank": 4.0,
       "eligible": true,
       "block_value": -0.1172294581697382,
       "block_quality": 2.151002143997514,
       "block_growth": 4.12785569855674,
-      "block_momentum": 1.607536947772798,
+      "block_momentum": 1.607558418334735,
       "block_earnings": -0.3571425169035899,
-      "block_risk": -2.6535311153087835,
-      "block_technical": -0.9782895282190311
+      "block_risk": -2.6535349255185454,
+      "block_technical": -0.978340660992974
     },
     {
       "ticker": "HPE",
       "name": "Hewlett Packard Enterprise",
       "sector": "Information Technology",
       "last_close": 70.33000183105469,
-      "composite": 0.9363369136679692,
-      "rank": 5,
+      "composite": 0.9363640257707035,
+      "rank": 5.0,
       "eligible": true,
       "block_value": 0.2210528163067883,
       "block_quality": -0.5344576345348465,
       "block_growth": 2.11370107259597,
-      "block_momentum": 2.826534552097617,
+      "block_momentum": 2.8265304477152884,
       "block_earnings": 0.3826292223210245,
-      "block_risk": -1.935572265305158,
-      "block_technical": -0.08813769238466
+      "block_risk": -1.9355810636512492,
+      "block_technical": -0.0877768009071796
     },
     {
       "ticker": "PSX",
       "name": "Phillips 66",
       "sector": "Energy",
       "last_close": 281.4700012207031,
-      "composite": 0.8749995009995929,
-      "rank": 6,
+      "composite": 0.8750213495426987,
+      "rank": 6.0,
       "eligible": true,
       "block_value": 0.4033582074212857,
       "block_quality": -0.7868687898686613,
       "block_growth": 2.3281253181391555,
-      "block_momentum": 2.153499225132459,
+      "block_momentum": 2.153504015857766,
       "block_earnings": 0.7718663706126003,
-      "block_risk": 0.4091535559188777,
-      "block_technical": -0.8467680892443864
+      "block_risk": 0.4091284672073266,
+      "block_technical": -0.8464941311417989
     },
     {
       "ticker": "DELL",
       "name": "Dell Technologies",
       "sector": "Information Technology",
       "last_close": 576.760009765625,
-      "composite": 0.8459790624533218,
-      "rank": 7,
+      "composite": 0.8459944330838874,
+      "rank": 7.0,
       "eligible": true,
       "block_value": -0.1075886523285821,
       "block_quality": -0.8447423148789104,
       "block_growth": 2.1199176932245307,
-      "block_momentum": 2.679728080946291,
+      "block_momentum": 2.6797348045390663,
       "block_earnings": 1.749935284430495,
-      "block_risk": -2.817310696293543,
-      "block_technical": -0.704499946341189
+      "block_risk": -2.817313368617926,
+      "block_technical": -0.7043310226887378
     },
     {
       "ticker": "TRV",
       "name": "Travelers Companies (The)",
       "sector": "Financials",
       "last_close": 371.6799926757813,
-      "composite": 0.8407437389780993,
-      "rank": 8,
+      "composite": 0.8407676470610254,
+      "rank": 8.0,
       "eligible": true,
       "block_value": 1.1872865524454823,
       "block_quality": -0.1198805307813126,
       "block_growth": -0.3892490054509348,
-      "block_momentum": 0.5549810262260452,
+      "block_momentum": 0.5550039803922299,
       "block_earnings": 4.065553522685905,
-      "block_risk": 1.0060120350557995,
-      "block_technical": -0.3697938460681786
+      "block_risk": 1.0059827995725172,
+      "block_technical": -0.3695591465423338
     },
     {
       "ticker": "GOOGL",
       "name": "Alphabet Inc. (Class A)",
       "sector": "Communication Services",
       "last_close": 352.7200012207031,
-      "composite": 0.8323522967121189,
-      "rank": 9,
+      "composite": 0.832380707519863,
+      "rank": 9.0,
       "eligible": true,
       "block_value": -0.3285343560247655,
       "block_quality": 1.459641297606501,
       "block_growth": 1.329512425464752,
-      "block_momentum": 0.1709527599131569,
+      "block_momentum": 0.1709850369707458,
       "block_earnings": 4.065553522685905,
-      "block_risk": 0.1351820442138687,
-      "block_technical": -0.278356783950331
+      "block_risk": 0.1351588589641257,
+      "block_technical": -0.2781052988821814
     },
     {
       "ticker": "OXY",
       "name": "Occidental Petroleum",
       "sector": "Energy",
       "last_close": 61.130001068115234,
-      "composite": 0.7778006585332977,
-      "rank": 10,
+      "composite": 0.7778336252776394,
+      "rank": 10.0,
       "eligible": true,
       "block_value": 0.5555932315613028,
       "block_quality": 0.615262828357206,
       "block_growth": 3.0779295770165547,
-      "block_momentum": 0.5290531478456938,
+      "block_momentum": 0.5290788692858239,
       "block_earnings": 0.9675907321114892,
-      "block_risk": 0.1153480423268218,
-      "block_technical": -0.1273606016655192
+      "block_risk": 0.1153249948770452,
+      "block_technical": -0.1270276871744041
     },
     {
       "ticker": "CNC",
       "name": "Centene Corporation",
       "sector": "Health Care",
       "last_close": 67.0199966430664,
-      "composite": 0.7398711165186228,
-      "rank": 11,
+      "composite": 0.739903413331194,
+      "rank": 11.0,
       "eligible": true,
       "block_value": 1.255811942784209,
       "block_quality": -1.3681343037911338,
       "block_growth": -0.5870526183679002,
-      "block_momentum": 1.0224975848523998,
+      "block_momentum": 1.022521270947599,
       "block_earnings": 4.065553522685905,
-      "block_risk": 0.0285490373133874,
-      "block_technical": -0.0612115394499411
+      "block_risk": 0.0285265929138695,
+      "block_technical": -0.0608798188501576
     },
     {
       "ticker": "CRM",
       "name": "Salesforce",
       "sector": "Information Technology",
       "last_close": 233.9199981689453,
-      "composite": 0.69769004639359,
-      "rank": 12,
+      "composite": 0.6976935935408983,
+      "rank": 12.0,
       "eligible": true,
       "block_value": 0.4453878508261489,
       "block_quality": 0.537101284884336,
       "block_growth": 0.1720715631623876,
-      "block_momentum": 0.8032648560068737,
+      "block_momentum": 0.8032675264038369,
       "block_earnings": 3.8078055485515834,
-      "block_risk": -1.7963814958380504,
-      "block_technical": -0.9469545191352288
+      "block_risk": -1.796391261234738,
+      "block_technical": -0.9469128697349708
     },
     {
       "ticker": "SMCI",
       "name": "Supermicro",
       "sector": "Information Technology",
       "last_close": 39.97999954223633,
-      "composite": 0.6471435880736945,
-      "rank": 13,
+      "composite": 0.6471419624260647,
+      "rank": 13.0,
       "eligible": true,
       "block_value": -0.0143642385186336,
       "block_quality": -0.8111350979836002,
       "block_growth": 3.7976054298847854,
-      "block_momentum": 0.6940526159196395,
+      "block_momentum": 0.6940462614974199,
       "block_earnings": 3.6524424254408814,
-      "block_risk": -2.914608927309174,
-      "block_technical": -0.8985264561787664
+      "block_risk": -2.9146109236382123,
+      "block_technical": -0.8985214504440362
     },
     {
       "ticker": "TGT",
       "name": "Target Corporation",
       "sector": "Consumer Staples",
       "last_close": 153.6199951171875,
-      "composite": 0.638800571378175,
-      "rank": 14,
+      "composite": 0.6388147124101484,
+      "rank": 14.0,
       "eligible": true,
       "block_value": 0.4755572880593366,
       "block_quality": -0.5579052235604326,
       "block_growth": -0.057913690349486,
-      "block_momentum": 0.7376069923162509,
+      "block_momentum": 0.7376299794250959,
       "block_earnings": 3.5573447130741904,
-      "block_risk": 0.4391509123489496,
-      "block_technical": -0.3282006709075356
+      "block_risk": 0.4391256152258671,
+      "block_technical": -0.3280911368237265
     },
     {
       "ticker": "BIIB",
       "name": "Biogen",
       "sector": "Health Care",
       "last_close": 229.41000366210935,
-      "composite": 0.6286861913466527,
-      "rank": 15,
+      "composite": 0.6287037042026858,
+      "rank": 15.0,
       "eligible": true,
       "block_value": 0.1972144638373766,
       "block_quality": 0.0272457680026615,
       "block_growth": -0.878827185566031,
-      "block_momentum": 0.9068715021885962,
+      "block_momentum": 0.9068898126213472,
       "block_earnings": 3.643043232939523,
-      "block_risk": 0.4999730486562222,
-      "block_technical": -0.7814254749574097
+      "block_risk": 0.4999473289614174,
+      "block_technical": -0.7812559386087082
     },
     {
       "ticker": "AMZN",
       "name": "Amazon",
       "sector": "Consumer Discretionary",
       "last_close": 259.5299987792969,
-      "composite": 0.6274879429464142,
-      "rank": 16,
+      "composite": 0.6275196101113768,
+      "rank": 16.0,
       "eligible": true,
       "block_value": -0.0297733566002928,
       "block_quality": 0.160055113268548,
       "block_growth": 0.9707254877878508,
-      "block_momentum": 0.1653764895017485,
+      "block_momentum": 0.1654028307288406,
       "block_earnings": 4.065553522685905,
-      "block_risk": -0.5335577582532481,
-      "block_technical": 0.0587484519384483
+      "block_risk": -0.5335762973240302,
+      "block_technical": 0.0590594162019711
     },
     {
       "ticker": "DLTR",
       "name": "Dollar Tree",
       "sector": "Consumer Staples",
       "last_close": 117.61000061035156,
-      "composite": 0.6015319929714389,
-      "rank": 17,
+      "composite": 0.6015708208717453,
+      "rank": 17.0,
       "eligible": true,
       "block_value": 0.3844623079993796,
       "block_quality": -0.1225159176090148,
       "block_growth": 0.4303409832118458,
-      "block_momentum": -0.1181337482570213,
+      "block_momentum": -0.1181014898345605,
       "block_earnings": 4.065553522685905,
-      "block_risk": 0.0934525566037277,
-      "block_technical": 0.6357971798297802
+      "block_risk": 0.0934296612764129,
+      "block_technical": 0.636178730994867
     },
     {
       "ticker": "SNDK",
       "name": "Sandisk",
       "sector": "Information Technology",
       "last_close": 1487.3299560546875,
-      "composite": 0.5855374186333148,
-      "rank": 18,
+      "composite": 0.5855431106407357,
+      "rank": 18.0,
       "eligible": true,
       "block_value": -0.3715766681671278,
       "block_quality": 2.0570501574744138,
       "block_growth": 4.09736352358056,
-      "block_momentum": 0.470624991669029,
+      "block_momentum": 0.4706676696181682,
       "block_earnings": 0.123322088018824,
-      "block_risk": -2.914608927309174,
-      "block_technical": -0.8444096384372709
+      "block_risk": -2.9146109236382123,
+      "block_technical": -0.8444970334070023
     },
     {
       "ticker": "FTNT",
       "name": "Fortinet",
       "sector": "Information Technology",
       "last_close": 192.94000244140625,
-      "composite": 0.5741257978280695,
-      "rank": 19,
+      "composite": 0.5741517902117206,
+      "rank": 19.0,
       "eligible": true,
       "block_value": -2.1146092542911665,
       "block_quality": 1.770921230679228,
       "block_growth": 0.220221171989416,
-      "block_momentum": 2.232871523848216,
+      "block_momentum": 2.2328752614420466,
       "block_earnings": 0.4998426817497377,
-      "block_risk": -0.6093692367710628,
-      "block_technical": -0.5486809408163533
+      "block_risk": -0.6093872491292204,
+      "block_technical": -0.5483565427289621
     },
     {
       "ticker": "ZBRA",
       "name": "Zebra Technologies",
       "sector": "Information Technology",
       "last_close": 388.1199951171875,
-      "composite": 0.5480118645011236,
-      "rank": 20,
+      "composite": 0.5480296687934385,
+      "rank": 20.0,
       "eligible": true,
       "block_value": 0.0582901190439375,
       "block_quality": -0.2386394236856432,
       "block_growth": 0.4382083912057649,
-      "block_momentum": 1.5997484336265917,
+      "block_momentum": 1.5997429853437053,
       "block_earnings": 1.8583024450344,
-      "block_risk": -1.785396833194811,
-      "block_technical": -0.7989487719759455
+      "block_risk": -1.7854066749092357,
+      "block_technical": -0.7986984059753659
     },
     {
       "ticker": "APA",
       "name": "APA Corporation",
       "sector": "Energy",
       "last_close": 46.84000015258789,
-      "composite": 0.5462024417427693,
-      "rank": 21,
+      "composite": 0.5462298704441475,
+      "rank": 21.0,
       "eligible": true,
       "block_value": 0.9861002278279252,
       "block_quality": 0.5612515707924636,
       "block_growth": -0.2947421241753646,
-      "block_momentum": 1.483847611979077,
+      "block_momentum": 1.4838638093306815,
       "block_earnings": -0.5794057748769046,
-      "block_risk": -0.5150851212139512,
-      "block_technical": -0.4542765188896552
+      "block_risk": -0.5151037886263952,
+      "block_technical": -0.4539803996316135
     },
     {
       "ticker": "ALL",
       "name": "Allstate",
       "sector": "Financials",
       "last_close": 232.6000061035156,
-      "composite": 0.4973040134956361,
-      "rank": 22,
+      "composite": 0.4973358805009261,
+      "rank": 22.0,
       "eligible": true,
       "block_value": 1.2568990458821367,
       "block_quality": 0.1687273867194284,
       "block_growth": -0.065922481859566,
-      "block_momentum": -0.1945014762739469,
+      "block_momentum": -0.1944686334570076,
       "block_earnings": 2.0203002922637063,
-      "block_risk": 0.4611583052647147,
-      "block_technical": 0.4862870130294497
+      "block_risk": 0.4611328552416769,
+      "block_technical": 0.486581277549331
     },
     {
       "ticker": "TWLO",
       "name": "Twilio",
       "sector": "Information Technology",
       "last_close": 282.6600036621094,
-      "composite": 0.4896499994980856,
-      "rank": 23,
+      "composite": 0.4896502677651764,
+      "rank": 23.0,
       "eligible": true,
       "block_value": -0.8805891848256409,
       "block_quality": 0.0365285532602212,
       "block_growth": 2.2464202898807137,
-      "block_momentum": 2.274101635714309,
+      "block_momentum": 2.274102618645411,
       "block_earnings": -0.0237476299436179,
-      "block_risk": -2.648687062928873,
-      "block_technical": -1.2848762011041532
+      "block_risk": -2.648690906793479,
+      "block_technical": -1.2848736508586944
     },
     {
       "ticker": "ILMN",
       "name": "Illumina, Inc.",
       "sector": "Health Care",
       "last_close": 276.6700134277344,
-      "composite": 0.4849478650414937,
-      "rank": 24,
+      "composite": 0.4849551548480557,
+      "rank": 24.0,
       "eligible": true,
       "block_value": -0.7248874185708422,
       "block_quality": 0.4430731040983454,
       "block_growth": -0.4530813424943168,
-      "block_momentum": 2.5974123115602112,
+      "block_momentum": 2.5974088594864204,
       "block_earnings": -0.2581745488010443,
-      "block_risk": -1.1886531501948867,
-      "block_technical": -1.0884940077787884
+      "block_risk": -1.1886671378834777,
+      "block_technical": -1.088379449153606
     },
     {
       "ticker": "CVX",
       "name": "Chevron Corporation",
       "sector": "Energy",
-      "last_close": 215,
-      "composite": 0.4670117078999237,
-      "rank": 25,
+      "last_close": 215.0,
+      "composite": 0.4670350759472273,
+      "rank": 25.0,
       "eligible": true,
       "block_value": 0.4630268796884387,
       "block_quality": -0.3282907644621123,
       "block_growth": 2.2332943902274422,
-      "block_momentum": 0.7959757120383317,
+      "block_momentum": 0.7959970623679594,
       "block_earnings": -0.1464900261378365,
-      "block_risk": 0.7534841921231115,
-      "block_technical": -0.6694876144393433
+      "block_risk": 0.7534567111182474,
+      "block_technical": -0.6692549668305044
     }
   ],
   "factor_weights": {
@@ -1032,13 +1099,9 @@
     "risk": 0.06,
     "technical": 0.08
   },
-  "learning": {
-    "enabled": false,
-    "mode": "off",
-    "recent_decisions": []
-  },
   "lifecycle_evaluation": {
     "schema_version": 1,
+    "generated_at_utc": "2026-10-14T01:17:41+00:00",
     "status": "collecting_data",
     "status_message": "Недостаточно связанных закрытых сделок: 0 из 40, необходимых для оценки.",
     "learning_enabled": false,
@@ -1061,7 +1124,7 @@
       "win_rate": null,
       "mean_return": null,
       "median_return": null,
-      "total_pnl": 0,
+      "total_pnl": 0.0,
       "mean_bars_held": null,
       "profit_factor": null
     },
@@ -1073,7 +1136,7 @@
         "win_rate": null,
         "mean_return": null,
         "median_return": null,
-        "total_pnl": 0,
+        "total_pnl": 0.0,
         "mean_bars_held": null,
         "profit_factor": null
       },
@@ -1082,7 +1145,7 @@
         "win_rate": null,
         "mean_return": null,
         "median_return": null,
-        "total_pnl": 0,
+        "total_pnl": 0.0,
         "mean_bars_held": null,
         "profit_factor": null
       },
@@ -1183,5 +1246,10 @@
       }
     ],
     "caveat": "Descriptive associations only; not causal estimates and not a basis for changing factor weights before separate validation."
+  },
+  "learning": {
+    "enabled": false,
+    "mode": "off",
+    "recent_decisions": []
   }
 }

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "generated_at_utc": "2026-10-14T01:17:41+00:00",
   "status": "collecting_data",
   "status_message": "Недостаточно связанных закрытых сделок: 0 из 40, необходимых для оценки.",
   "learning_enabled": false,
@@ -22,7 +23,7 @@
     "win_rate": null,
     "mean_return": null,
     "median_return": null,
-    "total_pnl": 0,
+    "total_pnl": 0.0,
     "mean_bars_held": null,
     "profit_factor": null
   },
@@ -34,7 +35,7 @@
       "win_rate": null,
       "mean_return": null,
       "median_return": null,
-      "total_pnl": 0,
+      "total_pnl": 0.0,
       "mean_bars_held": null,
       "profit_factor": null
     },
@@ -43,7 +44,7 @@
       "win_rate": null,
       "mean_return": null,
       "median_return": null,
-      "total_pnl": 0,
+      "total_pnl": 0.0,
       "mean_bars_held": null,
       "profit_factor": null
     },
