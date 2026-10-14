@@ -53,7 +53,7 @@
       "entry_rank": 3,
       "av_verdict": "confirmed",
       "last_price": 386.94,
-      "last_value": 399.0,
+      "last_value": 399,
       "bars_held": 21,
       "stale_days": 0,
       "unrealised_pct": -0.163434,
@@ -81,7 +81,7 @@
       },
       "entry_rank": 4,
       "av_verdict": "confirmed",
-      "last_price": 436.0,
+      "last_price": 436,
       "last_value": 576.17,
       "bars_held": 20,
       "stale_days": 0,
@@ -116,7 +116,7 @@
       "stale_days": 0,
       "unrealised_pct": 0.204329,
       "last_composite": 1.085664978718589,
-      "last_rank_percentile": 1.0,
+      "last_rank_percentile": 1,
       "weak_signal_runs": 0,
       "last_signal_review": "rank percentile 100% remains acceptable"
     },
@@ -666,5 +666,9 @@
   ],
   "pending_orders": [],
   "next_trade_id": 24,
-  "version": 2
+  "version": 2,
+  "peak_equity": 10448.01,
+  "current_drawdown_pct": 0.001314,
+  "drawdown_paused": false,
+  "drawdown_pause_date": null
 }

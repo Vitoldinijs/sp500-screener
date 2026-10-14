@@ -98,6 +98,33 @@ def run_daily(cfg: Config, allow_network: bool = True,
     state = portfolio.PortfolioState.load(
         cfg.path("portfolio_json"), float(strat["start_capital"])
     )
+    # Upgrade older committed states using the historical equity peak rather
+    # than resetting the breaker to a lower balance after a drawdown.
+    try:
+        saved_peak = float(state.peak_equity or 0.0)
+    except (TypeError, ValueError):
+        saved_peak = 0.0
+    if not np.isfinite(saved_peak) or saved_peak <= 0:
+        history = _load_csv(cfg.path("equity_csv"))
+        historical_peak = 0.0
+        if not history.empty and "equity" in history:
+            values = pd.to_numeric(history["equity"], errors="coerce").dropna()
+            if not values.empty:
+                historical_peak = float(values.max())
+        state.peak_equity = max(
+            float(state.start_capital), historical_peak, state.equity()
+        )
+        if state.peak_equity > 0:
+            state.current_drawdown_pct = max(
+                0.0, (state.peak_equity - state.equity()) / state.peak_equity
+            )
+        try:
+            trigger = float(strat.get("max_portfolio_drawdown_pct", 0.20))
+        except (TypeError, ValueError):
+            trigger = 0.20
+        if trigger > 0 and state.current_drawdown_pct >= trigger:
+            state.drawdown_paused = True
+            state.drawdown_pause_date = state.last_run_date or data_date.strftime("%Y-%m-%d")
     already_ran = state.last_run_date == data_date.strftime("%Y-%m-%d")
     if already_ran:
         _log(f"state already processed {state.last_run_date}; rebuilding report only")
