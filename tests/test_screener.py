@@ -223,6 +223,75 @@ def test_allocation_multiplier_and_entry_notional_follow_rank_strength():
     assert queued_notional(strong) > queued_notional(weak)
 
 
+def test_new_entries_obey_single_name_and_sector_exposure_caps():
+    cfg = _cfg()
+    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_position_pct_equity"] = 0.08
+    cfg.strategy["max_sector_pct_equity"] = 0.25
+
+    def make_state():
+        state = portfolio.PortfolioState.new(10_000.0)
+        state.cash = 8_000.0
+        state.positions = [
+            {"trade_id": 1, "ticker": "AAA", "sector": "Tech",
+             "shares": 10.0, "entry_price": 100.0, "cost_basis": 1_000.0,
+             "last_value": 1_000.0, "allocation_weight": 0.6, "entry_bar": 0},
+            {"trade_id": 2, "ticker": "BBB", "sector": "Tech",
+             "shares": 10.0, "entry_price": 100.0, "cost_basis": 1_000.0,
+             "last_value": 1_000.0, "allocation_weight": 0.6, "entry_bar": 0},
+        ]
+        state.next_trade_id = 3
+        return state
+
+    top_pick = {"ticker": "CCC", "sector": "Health Care", "composite": 2.0,
+                "allocation_weight": 1.8, "last_close": 100.0}
+    other_sector = portfolio.Ladder(cfg, make_state()).schedule_entry([top_pick])
+    assert other_sector is not None
+    assert other_sector["notional"] <= 800.0 + 0.01
+
+    same_sector = portfolio.Ladder(cfg, make_state()).schedule_entry(
+        [{**top_pick, "sector": "Tech"}]
+    )
+    assert same_sector is not None
+    assert same_sector["notional"] <= 500.0 + 0.01, (
+        "the $2,000 held in Tech leaves only $500 under a 25% sector cap"
+    )
+
+
+def test_rebalance_targets_obey_single_name_and_sector_caps():
+    cfg = _cfg()
+    cfg.strategy["n_slots"] = 4
+    cfg.strategy["max_position_pct_equity"] = 0.20
+    cfg.strategy["max_sector_pct_equity"] = 0.25
+    state = portfolio.PortfolioState.new(10_000.0)
+    state.cash = 4_000.0
+    state.bar_count = 20
+    state.positions = [
+        {"trade_id": 1, "ticker": "AAA", "sector": "Tech", "shares": 15.0,
+         "entry_price": 100.0, "cost_basis": 1_500.0, "last_value": 1_500.0,
+         "allocation_weight": 1.0, "entry_bar": 0},
+        {"trade_id": 2, "ticker": "BBB", "sector": "Tech", "shares": 15.0,
+         "entry_price": 100.0, "cost_basis": 1_500.0, "last_value": 1_500.0,
+         "allocation_weight": 1.0, "entry_bar": 0},
+        {"trade_id": 3, "ticker": "CCC", "sector": "Health Care", "shares": 15.0,
+         "entry_price": 100.0, "cost_basis": 1_500.0, "last_value": 1_500.0,
+         "allocation_weight": 1.0, "entry_bar": 0},
+        {"trade_id": 4, "ticker": "DDD", "sector": "Energy", "shares": 15.0,
+         "entry_price": 100.0, "cost_basis": 1_500.0, "last_value": 1_500.0,
+         "allocation_weight": 1.0, "entry_bar": 0},
+    ]
+    scored = pd.DataFrame(
+        {"eligible": [True] * 4, "composite": [4.0, 3.0, 2.0, 1.0],
+         "rank": [1, 2, 3, 4], "exclude_reason": [""] * 4},
+        index=["AAA", "BBB", "CCC", "DDD"],
+    )
+    ladder = portfolio.Ladder(cfg, state)
+    targets = ladder._position_target_values(scored, pending_sell_ids=set())
+    tech_target = targets[1] + targets[2]
+    assert tech_target <= 2_500.0 + 0.01
+    assert all(value <= 2_000.0 + 0.01 for value in targets.values())
+
+
 def test_composite_renormalises_over_missing_blocks():
     """A name missing a whole block must not be silently penalised to zero."""
     cfg = _cfg()
