@@ -150,6 +150,8 @@ def build_payload(cfg: Config) -> dict:
             "start_capital": strat.get("start_capital"),
             "n_slots": strat.get("n_slots"),
             "max_positions_per_sector": strat.get("max_positions_per_sector"),
+            "max_position_pct_equity": strat.get("max_position_pct_equity", 0.08),
+            "max_sector_pct_equity": strat.get("max_sector_pct_equity", 0.25),
             "cash_reserve_pct": strat.get("cash_reserve_pct", 0.10),
             "allocation_min_multiplier": strat.get("allocation_min_multiplier", 0.60),
             "allocation_max_multiplier": strat.get("allocation_max_multiplier", 1.80),
