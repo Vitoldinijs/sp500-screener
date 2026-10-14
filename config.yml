@@ -112,8 +112,8 @@ winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
 # ---- Self-learning ---------------------------------------------------------
 learning:
-  enabled: false                # paused until event-driven outcomes are mature
-  mode: "off"                    # no fixed forward-return horizon is used for learning
+  enabled: true                 # armed; no updates until lifecycle sample + holdout gates pass
+  mode: "lifecycle"              # uses linked, completed paper-trade outcomes
   weight_min: 0.05              # no block weight may fall below this
   weight_max: 0.50              # ...or exceed this
   max_step_per_month: 0.05      # retained for future event-based learner
@@ -124,8 +124,9 @@ learning:
   min_training_trades: 20       # strict pre-validation sample size
   min_validation_trades: 10     # minimum later-period sample size
   validation_fraction: 0.30     # latest signal dates held out for temporal review
-  min_factor_observations: 8    # minimum observations before reporting a correlation
-  rollback_if_worse: true       # revert if validation Sharpe drops
+  min_factor_observations: 8    # minimum pairs before trusting a block correlation
+  min_validation_ic_improvement: 0.01 # held-out Spearman IC must improve by at least 0.01
+  rollback_if_worse: true       # reject proposals that fail the held-out check
 
 # ---- Data sources ----------------------------------------------------------
 data:
