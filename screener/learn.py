@@ -2,16 +2,11 @@
 
 How it learns
 -------------
-Once a month the job reconstructs the screener's own scoring table *as it
-would have looked* on a grid of past dates, using only data available then:
-
-  * price factors   <- the cached OHLCV history, truncated at that date
-  * fundamentals    <- the newest weekly snapshot dated on/before that date
-
-The former implementation used a fixed forward-return target. It is now
-disabled and removed; the replacement will evaluate complete position
-lifecycles from actual signal and execution records. No fixed target horizon
-is used for learning.
+Once a month it reads state/signal_outcomes.csv, which links completed trades
+to the exact factor snapshot used at entry. It trains on trades that had closed
+before the validation slice began, and only accepts a weight proposal when the
+reweighted signal score improves rank correlation on the held-out outcomes.
+No fixed forward-return horizon is used.
 
 Guardrails, because factor timing is notoriously easy to overfit:
   * weights move at most ``max_step_per_month`` (0.05) per run
@@ -270,7 +265,8 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
     current_weights = {b: float(cfg.weights.get(b, 0.0)) for b in BLOCKS}
     if not bool(cfg.learning.get("enabled", False)):
         return _log_learning_decision(
-            cfg, decision="skipped", reason="automatic lifecycle learning is disabled",
+            cfg, decision="dry_run_skipped" if dry_run else "skipped",
+            reason="automatic lifecycle learning is disabled",
             before=current_weights, after=current_weights, sample_key="disabled",
             training_n=0, validation_n=0,
         )
@@ -322,7 +318,7 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
         "latest_exit_date": latest_exit.strftime("%Y-%m-%d") if latest_exit is not None else None,
     }
     last_key, last_decision = _last_learning_record(cfg.path("weights_history"))
-    if last_key == sample_key and last_decision not in {
+    if not dry_run and last_key == sample_key and last_decision not in {
         "dry_run_accept", "dry_run_reject", "dry_run_skipped"
     }:
         return _log_learning_decision(
@@ -333,13 +329,13 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
 
     if len(data) < minimum_total:
         return _log_learning_decision(
-            cfg, decision="skipped",
+            cfg, decision="dry_run_skipped" if dry_run else "skipped",
             reason=f"only {len(data)} eligible linked closed trades; need at least {minimum_total}",
             before=current_weights, after=current_weights, **shared,
         )
     if len(training) < minimum_train or len(validation) < minimum_validation:
         return _log_learning_decision(
-            cfg, decision="skipped",
+            cfg, decision="dry_run_skipped" if dry_run else "skipped",
             reason=(f"temporal split too small: {len(training)} training and "
                     f"{len(validation)} validation trades; need {minimum_train} and "
                     f"{minimum_validation}"),
@@ -364,7 +360,7 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
 
     if not any(value > 0 for value in train_ic.values()):
         return _log_learning_decision(
-            cfg, decision="rejected",
+            cfg, decision="dry_run_reject" if dry_run else "rejected",
             reason="no factor block has a positive training rank correlation",
             before=current_weights, after=current_weights,
             train_factor_ic=json.dumps(train_ic, sort_keys=True), **shared,
@@ -374,7 +370,8 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
     largest_change = max(abs(proposal[b] - current_weights[b]) for b in BLOCKS)
     if largest_change < 0.0001:
         return _log_learning_decision(
-            cfg, decision="skipped", reason="factor evidence does not justify a weight change",
+            cfg, decision="dry_run_skipped" if dry_run else "skipped",
+            reason="factor evidence does not justify a weight change",
             before=current_weights, after=current_weights,
             train_factor_ic=json.dumps(train_ic, sort_keys=True), **shared,
         )
@@ -410,14 +407,14 @@ def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
     }
     if not np.isfinite(baseline_ic) or not np.isfinite(proposed_ic):
         return _log_learning_decision(
-            cfg, decision="rejected",
+            cfg, decision="dry_run_reject" if dry_run else "rejected",
             reason="validation score/return correlation is unavailable; weights left unchanged",
             before=current_weights, after=current_weights, **validation_details,
         )
     improvement = float(proposed_ic - baseline_ic)
     if proposed_ic <= 0 or improvement < min_improvement:
         return _log_learning_decision(
-            cfg, decision="rejected",
+            cfg, decision="dry_run_reject" if dry_run else "rejected",
             reason=(f"held-out rank correlation did not improve enough "
                     f"({baseline_ic:.3f} -> {proposed_ic:.3f}; need +{min_improvement:.3f})"),
             before=current_weights, after=current_weights,
