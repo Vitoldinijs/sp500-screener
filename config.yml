@@ -13,7 +13,9 @@ strategy:
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
   max_positions_per_sector: 5   # hard count cap by sector
-  max_position_pct_equity: 0.08 # target exposure to one stock <= 8% of portfolio equity
+  max_position_pct_equity: 0.15 # target exposure to one stock <= 15% of portfolio equity
+  max_portfolio_drawdown_pct: 0.20 # pause new buys after a 20% drawdown from peak equity
+  drawdown_resume_below_pct: 0.12 # resume new buys only after drawdown recovers to 12% or less
   max_sector_pct_equity: 0.25   # target sector exposure <= 25% of portfolio equity
   cash_reserve_pct: 0.10        # target cash buffer; the rest is allocated to open slots
   allocation_min_multiplier: 0.60 # relative target weight for the weakest eligible rank
