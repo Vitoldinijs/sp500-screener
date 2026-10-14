@@ -135,11 +135,18 @@ def evaluate_lifecycle_outcomes(outcomes: pd.DataFrame,
             f"Недостаточно связанных закрытых сделок: {evaluable_count} из "
             f"{minimum_total}, необходимых для оценки."
         )
+    elif split_available and bool(settings.get("enabled", False)):
+        status = "ready_for_automatic_gate"
+        message = (
+            "Есть обучающая и более поздняя проверочная выборки. Кандидатные "
+            "веса будут приняты только при улучшении ранговой связи с результатами "
+            "на отложенной выборке."
+        )
     elif split_available:
         status = "temporal_split_ready_for_review"
         message = (
-            "Данных достаточно для раздельной временной проверки. Ассоциации "
-            "факторов остаются исследовательскими и не меняют веса автоматически."
+            "Данных достаточно для раздельной временной проверки, но автоматическое "
+            "обучение отключено в конфигурации."
         )
     else:
         status = "more_data_needed_for_validation"
@@ -201,7 +208,7 @@ def evaluate_lifecycle_outcomes(outcomes: pd.DataFrame,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "status": status,
         "status_message": message,
-        "learning_enabled": False,
+        "learning_enabled": bool(settings.get("enabled", False) and split_available and evaluable_count >= minimum_total),
         "thresholds": {
             "min_completed_trades": minimum_total,
             "min_training_trades": minimum_train,
@@ -227,8 +234,8 @@ def evaluate_lifecycle_outcomes(outcomes: pd.DataFrame,
         "exit_reasons": exit_reasons[:10],
         "factor_associations": factor_rows,
         "caveat": (
-            "Descriptive associations only; not causal estimates and not a basis "
-            "for changing factor weights before separate validation."
+            "Factor associations are not causal estimates. The learner changes weights "
+            "only after a chronological held-out score/return correlation improves."
         ),
     }
 

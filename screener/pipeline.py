@@ -414,16 +414,11 @@ def run_weekly(cfg: Config, limit: int | None = None) -> dict:
 # MONTHLY
 # ---------------------------------------------------------------------------
 def run_monthly(cfg: Config, dry_run: bool = False) -> dict:
+    """Tune from the saved closed-trade ledger; no price download is needed."""
     ensure_dirs(cfg)
-    uni = universe.load_universe(cfg, allow_network=True)
-    tickers = sorted(uni["ticker"].astype(str).unique().tolist())
-    prices_long = price_mod.get_prices(
-        tickers, cache_path=cfg.path("prices_cache"),
-        lookback_days=int(cfg.data.get("price_lookback_days", 420)),
-        provider=cfg.data.get("price_provider", "yfinance"),
-        allow_network=True,
-    )
-    rec = learn.run_learning(cfg, prices_long, uni, dry_run=dry_run)
+    # Exact entry-time factor snapshots and realised outcomes are already
+    # committed in state/signal_outcomes.csv, so no network pull is needed.
+    rec = learn.run_learning(cfg, pd.DataFrame(), pd.DataFrame(), dry_run=dry_run)
     _log(f"learning decision: {rec['decision']} — {rec['reason']}")
     if rec["decision"] == "accepted":
         _log(f"weights {rec['weights_before']} -> {rec['weights_after']}")
