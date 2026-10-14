@@ -1256,8 +1256,8 @@
     "caveat": "Descriptive associations only; not causal estimates and not a basis for changing factor weights before separate validation."
   },
   "learning": {
-    "enabled": false,
-    "mode": "off",
+    "enabled": true,
+    "mode": "lifecycle",
     "recent_decisions": []
   }
 }
