@@ -718,21 +718,87 @@ def test_proposed_weights_respect_bounds_and_sum_to_one():
                 f"{k} moved {step:.3f}, more than the monthly cap allows"
 
 
-def test_learning_stays_disabled_until_lifecycle_evaluation_is_ready():
+def test_lifecycle_learning_waits_for_enough_linked_completed_trades():
     with tempfile.TemporaryDirectory() as td:
-        shutil.copy(ROOT / "config.yml", Path(td) / "config.yml")
-        (Path(td) / "state").mkdir()
-        (Path(td) / "screener" / "data").mkdir(parents=True)
-        shutil.copy(ROOT / "screener" / "data" / "sp500.csv",
-                    Path(td) / "screener" / "data" / "sp500.csv")
-        cfg = Config.load(Path(td) / "config.yml")
-        cfg.root = Path(td)
+        root = Path(td)
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+        (root / "state").mkdir()
+        cfg = Config.load(root / "config.yml")
+        cfg.root = root
 
-        uni, px, _ = _fixture(n=25, days=400)
-        rec = learn.run_learning(cfg, px, uni)
+        rec = learn.run_learning(cfg, pd.DataFrame(), pd.DataFrame())
         assert rec["decision"] == "skipped"
-        assert "disabled" in rec["reason"]
+        assert "eligible linked closed trades" in rec["reason"]
         assert json.loads(rec["weights_before"]) == json.loads(rec["weights_after"])
+        assert rec["mode"] == "lifecycle"
+        assert (root / "state" / "weights_history.csv").exists()
+
+
+def test_lifecycle_learner_accepts_only_a_validation_improving_proposal():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+        (root / "state").mkdir()
+        cfg = Config.load(root / "config.yml")
+        cfg.root = root
+        cfg.learning["enabled"] = True
+        cfg.learning["min_trades_for_update"] = 40
+        cfg.learning["min_training_trades"] = 20
+        cfg.learning["min_validation_trades"] = 10
+        cfg.learning["min_factor_observations"] = 8
+        cfg.learning["validation_fraction"] = 0.30
+        cfg.learning["min_validation_ic_improvement"] = 0.0
+
+        rng = np.random.default_rng(17)
+        n = 100
+        blocks = {block: rng.normal(size=n) for block in learn.BLOCKS}
+        returns = blocks["momentum"] + rng.normal(scale=0.05, size=n)
+        start = pd.Timestamp("2025-01-01")
+        rows = []
+        for i in range(n):
+            signal_date = start + pd.Timedelta(days=i)
+            row = {
+                "trade_id": i + 1,
+                "ticker": f"T{i:03d}",
+                "signal_date": signal_date.strftime("%Y-%m-%d"),
+                "exit_date": (signal_date + pd.Timedelta(days=3)).strftime("%Y-%m-%d"),
+                "return_pct": float(returns[i]),
+                "learning_eligible": True,
+            }
+            row.update({f"signal_block_{b}": float(blocks[b][i]) for b in learn.BLOCKS})
+            rows.append(row)
+        pd.DataFrame(rows).to_csv(cfg.path("signal_outcomes_csv"), index=False)
+
+        before = cfg.weights.copy()
+        rec = learn.run_learning(cfg, pd.DataFrame(), pd.DataFrame())
+        assert rec["decision"] == "accepted", rec["reason"]
+        after = Config.load(root / "config.yml").weights
+        assert abs(sum(after.values()) - 1.0) < 1e-3
+        assert after["momentum"] > before["momentum"]
+        assert rec["validation_proposed_ic"] > rec["validation_baseline_ic"]
+        assert rec["validation_improvement"] > 0
+        assert max(abs(after[b] - before[b]) for b in learn.BLOCKS) <= (
+            cfg.learning["max_step_per_month"] + 0.001
+        )
+        assert len(pd.read_csv(cfg.path("weights_history"))) == 1
+
+
+def test_lifecycle_learner_never_tunes_same_sample_twice():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+        (root / "state").mkdir()
+        cfg = Config.load(root / "config.yml")
+        cfg.root = root
+        pd.DataFrame([{
+            "sample_key": "0|none|none|none",
+            "decision": "skipped",
+            "reason": "insufficient data",
+        }]).to_csv(cfg.path("weights_history"), index=False)
+
+        rec = learn.run_learning(cfg, pd.DataFrame(), pd.DataFrame())
+        assert rec["decision"] == "skipped"
+        assert "no new eligible closed trades" in rec["reason"]
 
 
 def test_spearman_matches_known_cases():
@@ -938,6 +1004,19 @@ def test_lifecycle_evaluation_uses_strict_temporal_validation_split():
     assert momentum["spearman_return"] > 0.9
     assert momentum["validation_spearman_return"] is not None
     assert report["learning_enabled"] is False
+
+
+def test_lifecycle_evaluation_arms_automatic_gate_only_when_enabled_and_ready():
+    report = evaluation.evaluate_lifecycle_outcomes(_evaluation_fixture(50), {
+        "enabled": True,
+        "min_trades_for_evaluation": 40,
+        "min_training_trades": 20,
+        "min_validation_trades": 10,
+        "validation_fraction": 0.30,
+        "min_factor_observations": 8,
+    })
+    assert report["status"] == "ready_for_automatic_gate"
+    assert report["learning_enabled"] is True
 
 
 def test_lifecycle_evaluation_writes_valid_json_for_empty_sample():
