@@ -1,4 +1,4 @@
-"""Factor-weight constraints and helpers (automatic updates paused).
+"""Lifecycle-driven factor-weight learning with strict validation gates.
 
 How it learns
 -------------
@@ -16,13 +16,12 @@ is used for learning.
 Guardrails, because factor timing is notoriously easy to overfit:
   * weights move at most ``max_step_per_month`` (0.05) per run
   * every weight stays inside [weight_min, weight_max] and they sum to 1
-  * nothing changes until ``min_trades_for_update`` real trades have closed
-  * automatic tuning remains paused until lifecycle outcomes and validation
-    are implemented and reviewed
-  * fundamental blocks get a shrink factor while point-in-time coverage is
-    still thin, since the snapshot history only starts accumulating now
-
-Weight-proposal helpers remain available for a future validated lifecycle learner.
+  * nothing changes until ``min_trades_for_update`` linked real trades have closed
+  * training trades must have exited before the chronological holdout begins
+  * proposals must improve score/return rank correlation on the holdout
+  * weights stay bounded and move by no more than the configured monthly step
+  * sparse factor coverage shrinks adjustments
+  * the same outcome sample is never tuned repeatedly without new results.
 """
 from __future__ import annotations
 
@@ -45,10 +44,10 @@ BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk", "technic
 # ---------------------------------------------------------------------------
 # statistics helpers (no scipy dependency)
 # ---------------------------------------------------------------------------
-def spearman(a: pd.Series, b: pd.Series) -> float:
-    """Rank correlation; NaN if fewer than 8 overlapping observations."""
+def spearman(a: pd.Series, b: pd.Series, minimum_n: int = 8) -> float:
+    """Rank correlation; NaN when fewer than the requested pairs overlap."""
     df = pd.concat([a, b], axis=1).dropna()
-    if len(df) < 8:
+    if len(df) < max(3, int(minimum_n)):
         return np.nan
     ra = df.iloc[:, 0].rank()
     rb = df.iloc[:, 1].rank()
@@ -68,12 +67,7 @@ def build_panel(
     grid_step: int = 5,
     max_dates: int = 200,
 ) -> tuple[pd.DataFrame, list[dict]]:
-    """No fixed-horizon target is generated.
-
-    The previous implementation labelled every stock with an arbitrary
-    forward return. That method is intentionally removed. The next learner
-    will evaluate completed signal lifecycles using actual entry/exit events.
-    """
+    """Retired fixed-horizon panel builder; lifecycle outcomes drive learning."""
     return pd.DataFrame(), []
 
 
@@ -165,24 +159,288 @@ def _coverage_confidence(ic_frame: pd.DataFrame) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# orchestration
+# lifecycle learner
 # ---------------------------------------------------------------------------
+def _truthy(value) -> bool:
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
+
+
+def _load_eligible_outcomes(path: Path, lookback_months: int) -> pd.DataFrame:
+    """Load only exact-linked, completed trades, never forward-return labels."""
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        data = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError):
+        return pd.DataFrame()
+    if data.empty or "learning_eligible" not in data:
+        return pd.DataFrame()
+
+    data = data.loc[data["learning_eligible"].map(_truthy)].copy()
+    if data.empty:
+        return data
+    data["return_pct"] = pd.to_numeric(data.get("return_pct"), errors="coerce")
+    data["signal_date_parsed"] = pd.to_datetime(
+        data.get("signal_date"), errors="coerce", utc=True
+    )
+    data["exit_date_parsed"] = pd.to_datetime(
+        data.get("exit_date"), errors="coerce", utc=True
+    )
+    valid = (
+        data["return_pct"].notna()
+        & np.isfinite(data["return_pct"])
+        & data["signal_date_parsed"].notna()
+        & data["exit_date_parsed"].notna()
+        & (data["exit_date_parsed"] >= data["signal_date_parsed"])
+    )
+    data = data.loc[valid].copy()
+    if data.empty:
+        return data
+
+    if "trade_id" in data:
+        data = data.drop_duplicates("trade_id", keep="last")
+    data = data.sort_values(["signal_date_parsed", "exit_date_parsed"], kind="stable")
+    latest_signal = data["signal_date_parsed"].max()
+    cutoff = latest_signal - pd.DateOffset(months=max(1, int(lookback_months)))
+    return data.loc[data["signal_date_parsed"] >= cutoff].reset_index(drop=True)
+
+
+def _weighted_composite(rows: pd.DataFrame, weights: dict) -> pd.Series:
+    """Rebuild a row-wise weighted composite, renormalising missing blocks."""
+    numerator = pd.Series(0.0, index=rows.index, dtype=float)
+    denominator = pd.Series(0.0, index=rows.index, dtype=float)
+    for block in BLOCKS:
+        weight = float(weights.get(block, 0.0))
+        if weight <= 0:
+            continue
+        column = f"signal_block_{block}"
+        values = pd.to_numeric(
+            rows[column] if column in rows else pd.Series(np.nan, index=rows.index),
+            errors="coerce",
+        )
+        present = values.notna() & np.isfinite(values)
+        numerator.loc[present] += values.loc[present] * weight
+        denominator.loc[present] += weight
+    return numerator.div(denominator.where(denominator > 0))
+
+
+def _last_learning_record(path: Path) -> tuple[str | None, str | None]:
+    if not path.exists():
+        return None, None
+    try:
+        history = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError):
+        return None, None
+    if history.empty:
+        return None, None
+    row = history.iloc[-1]
+    sample_key, decision = row.get("sample_key"), row.get("decision")
+    sample_key = None if pd.isna(sample_key) else str(sample_key)
+    decision = None if pd.isna(decision) else str(decision)
+    return sample_key, decision
+
+
+def _log_learning_decision(cfg, decision: str, reason: str, before: dict,
+                           after: dict, **details) -> dict:
+    rec = {
+        "run_date": date.today().isoformat(),
+        "mode": "lifecycle",
+        "decision": decision,
+        "reason": reason,
+        "weights_before": json.dumps(before, sort_keys=True),
+        "weights_after": json.dumps(after, sort_keys=True),
+        **details,
+    }
+    _append_log(rec, cfg.path("weights_history"))
+    return rec
+
+
 def run_learning(cfg, prices_long: pd.DataFrame, universe: pd.DataFrame,
                  dry_run: bool = False) -> dict:
-    """Learning is paused until completed lifecycle outcomes can be evaluated.
+    """Update weights only when a held-out, completed-trade check improves."""
+    current_weights = {b: float(cfg.weights.get(b, 0.0)) for b in BLOCKS}
+    if not bool(cfg.learning.get("enabled", False)):
+        return _log_learning_decision(
+            cfg, decision="skipped", reason="automatic lifecycle learning is disabled",
+            before=current_weights, after=current_weights, sample_key="disabled",
+            training_n=0, validation_n=0,
+        )
 
-    Do not fall back to forward returns at fixed day counts. Weight changes
-    require a separate event-driven evaluation design and validation.
-    """
-    current = json.dumps(cfg.weights)
-    return {
-        "run_date": date.today().isoformat(),
-        "mode": "off",
-        "decision": "skipped",
-        "reason": "learning disabled pending lifecycle-based evaluation; fixed-horizon targets are not used",
-        "weights_before": current,
-        "weights_after": current,
+    data = _load_eligible_outcomes(
+        cfg.path("signal_outcomes_csv"),
+        int(cfg.learning.get("lookback_months", 18)),
+    )
+    minimum_total = max(1, int(cfg.learning.get("min_trades_for_update", 40)))
+    minimum_train = max(1, int(cfg.learning.get("min_training_trades", 20)))
+    minimum_validation = max(1, int(cfg.learning.get("min_validation_trades", 10)))
+    minimum_factor_n = max(3, int(cfg.learning.get("min_factor_observations", 8)))
+    validation_fraction = float(np.clip(
+        cfg.learning.get("validation_fraction", 0.30), 0.15, 0.50
+    ))
+
+    if data.empty:
+        sample_key = "0|none|none|none"
+        cutoff = None
+        training = validation = data.copy()
+        latest_exit = None
+    else:
+        latest_signal = data["signal_date_parsed"].max()
+        latest_exit = data["exit_date_parsed"].max()
+        unique_dates = sorted(pd.Timestamp(x) for x in data["signal_date_parsed"].unique())
+        cut_index = int(np.floor(len(unique_dates) * (1.0 - validation_fraction)))
+        cut_index = max(1, min(len(unique_dates) - 1, cut_index)) if len(unique_dates) >= 2 else 0
+        cutoff = unique_dates[cut_index] if len(unique_dates) >= 2 else None
+        if cutoff is None:
+            sample_key = f"{len(data)}|{latest_signal:%Y-%m-%d}|{latest_exit:%Y-%m-%d}|none"
+            training = validation = data.iloc[0:0].copy()
+        else:
+            sample_key = (
+                f"{len(data)}|{latest_signal:%Y-%m-%d}|{latest_exit:%Y-%m-%d}|"
+                f"{cutoff:%Y-%m-%d}"
+            )
+            training = data.loc[
+                (data["signal_date_parsed"] < cutoff)
+                & (data["exit_date_parsed"] < cutoff)
+            ].copy()
+            validation = data.loc[data["signal_date_parsed"] >= cutoff].copy()
+
+    shared = {
+        "sample_key": sample_key,
+        "eligible_trades": int(len(data)),
+        "training_n": int(len(training)),
+        "validation_n": int(len(validation)),
+        "validation_cutoff": cutoff.strftime("%Y-%m-%d") if cutoff is not None else None,
+        "latest_exit_date": latest_exit.strftime("%Y-%m-%d") if latest_exit is not None else None,
     }
+    last_key, last_decision = _last_learning_record(cfg.path("weights_history"))
+    if last_key == sample_key and last_decision not in {
+        "dry_run_accept", "dry_run_reject", "dry_run_skipped"
+    }:
+        return _log_learning_decision(
+            cfg, decision="skipped",
+            reason="no new eligible closed trades since the previous monthly review",
+            before=current_weights, after=current_weights, **shared,
+        )
+
+    if len(data) < minimum_total:
+        return _log_learning_decision(
+            cfg, decision="skipped",
+            reason=f"only {len(data)} eligible linked closed trades; need at least {minimum_total}",
+            before=current_weights, after=current_weights, **shared,
+        )
+    if len(training) < minimum_train or len(validation) < minimum_validation:
+        return _log_learning_decision(
+            cfg, decision="skipped",
+            reason=(f"temporal split too small: {len(training)} training and "
+                    f"{len(validation)} validation trades; need {minimum_train} and "
+                    f"{minimum_validation}"),
+            before=current_weights, after=current_weights, **shared,
+        )
+
+    train_ic: dict[str, float] = {}
+    confidence: dict[str, float] = {}
+    train_returns = pd.to_numeric(training["return_pct"], errors="coerce")
+    for block in BLOCKS:
+        column = f"signal_block_{block}"
+        factor = pd.to_numeric(
+            training[column] if column in training else pd.Series(np.nan, index=training.index),
+            errors="coerce",
+        )
+        pair = pd.concat([factor.rename("factor"), train_returns.rename("ret")], axis=1).dropna()
+        ic = spearman(pair["factor"], pair["ret"], minimum_n=minimum_factor_n)
+        train_ic[block] = float(ic) if np.isfinite(ic) else 0.0
+        coverage = float(len(pair) / len(training)) if len(training) else 0.0
+        support = min(1.0, len(pair) / max(30.0, float(minimum_total)))
+        confidence[block] = coverage * support
+
+    if not any(value > 0 for value in train_ic.values()):
+        return _log_learning_decision(
+            cfg, decision="rejected",
+            reason="no factor block has a positive training rank correlation",
+            before=current_weights, after=current_weights,
+            train_factor_ic=json.dumps(train_ic, sort_keys=True), **shared,
+        )
+
+    proposal = propose_weights(current_weights, train_ic, cfg, confidence=confidence)
+    largest_change = max(abs(proposal[b] - current_weights[b]) for b in BLOCKS)
+    if largest_change < 0.0001:
+        return _log_learning_decision(
+            cfg, decision="skipped", reason="factor evidence does not justify a weight change",
+            before=current_weights, after=current_weights,
+            train_factor_ic=json.dumps(train_ic, sort_keys=True), **shared,
+        )
+
+    validation_returns = pd.to_numeric(validation["return_pct"], errors="coerce")
+    baseline_ic = spearman(
+        _weighted_composite(validation, current_weights), validation_returns,
+        minimum_n=minimum_factor_n,
+    )
+    proposed_ic = spearman(
+        _weighted_composite(validation, proposal), validation_returns,
+        minimum_n=minimum_factor_n,
+    )
+    baseline_train_ic = spearman(
+        _weighted_composite(training, current_weights), train_returns,
+        minimum_n=minimum_factor_n,
+    )
+    proposed_train_ic = spearman(
+        _weighted_composite(training, proposal), train_returns,
+        minimum_n=minimum_factor_n,
+    )
+    min_improvement = max(0.0, float(
+        cfg.learning.get("min_validation_ic_improvement", 0.01)
+    ))
+    validation_details = {
+        **shared,
+        "train_factor_ic": json.dumps(train_ic, sort_keys=True),
+        "validation_baseline_ic": float(baseline_ic) if np.isfinite(baseline_ic) else None,
+        "validation_proposed_ic": float(proposed_ic) if np.isfinite(proposed_ic) else None,
+        "training_baseline_ic": float(baseline_train_ic) if np.isfinite(baseline_train_ic) else None,
+        "training_proposed_ic": float(proposed_train_ic) if np.isfinite(proposed_train_ic) else None,
+        "min_validation_ic_improvement": min_improvement,
+    }
+    if not np.isfinite(baseline_ic) or not np.isfinite(proposed_ic):
+        return _log_learning_decision(
+            cfg, decision="rejected",
+            reason="validation score/return correlation is unavailable; weights left unchanged",
+            before=current_weights, after=current_weights, **validation_details,
+        )
+    improvement = float(proposed_ic - baseline_ic)
+    if proposed_ic <= 0 or improvement < min_improvement:
+        return _log_learning_decision(
+            cfg, decision="rejected",
+            reason=(f"held-out rank correlation did not improve enough "
+                    f"({baseline_ic:.3f} -> {proposed_ic:.3f}; need +{min_improvement:.3f})"),
+            before=current_weights, after=current_weights,
+            validation_improvement=round(improvement, 6), **validation_details,
+        )
+
+    if dry_run:
+        return _log_learning_decision(
+            cfg, decision="dry_run_accept",
+            reason=(f"proposed weights improve held-out rank correlation "
+                    f"({baseline_ic:.3f} -> {proposed_ic:.3f}); dry run, not saved"),
+            before=current_weights, after=proposal,
+            validation_improvement=round(improvement, 6), **validation_details,
+        )
+
+    cfg.save_weights(proposal)
+    return _log_learning_decision(
+        cfg, decision="accepted",
+        reason=(f"held-out rank correlation improved {baseline_ic:.3f} -> "
+                f"{proposed_ic:.3f} (+{improvement:.3f}); weights updated within monthly bounds"),
+        before=current_weights, after=proposal,
+        validation_improvement=round(improvement, 6), **validation_details,
+    )
 
 
 def _append_log(rec: dict, path: Path) -> None:
