@@ -584,7 +584,17 @@ function renderPositions(d) {
   sec.appendChild(el('h2', { text: 'Open positions' }));
   sec.appendChild(el('div', {
     class: 'sub',
-    text: `${p.n_positions ?? 0} of ${p.n_slots ?? '—'} ladder slots filled · cash ${fmtUSD(p.cash)} · reserve ${fmtPct(d.strategy ? d.strategy.cash_reserve_pct ?? 0.10 : 0.10)} · stock cap ${fmtPct(d.strategy ? d.strategy.max_position_pct_equity ?? 0.08 : 0.08)} · sector cap ${fmtPct(d.strategy ? d.strategy.max_sector_pct_equity ?? 0.25 : 0.25)}`
+    text: `${p.n_positions ?? 0} of ${p.n_slots ?? '—'} ladder slots filled · cash ${fmtUSD(p.cash)} · reserve ${fmtPct(d.strategy ? d.strategy.cash_reserve_pct ?? 0.10 : 0.10)} · stock cap ${fmtPct(d.strategy ? d.strategy.max_position_pct_equity ?? 0.15 : 0.15)} · sector cap ${fmtPct(d.strategy ? d.strategy.max_sector_pct_equity ?? 0.25 : 0.25)}`
+  }));
+  const drawdownPct = Number(p.current_drawdown_pct);
+  const drawdownLabel = Number.isFinite(drawdownPct) ? `${(drawdownPct * 100).toFixed(1)}%` : '—';
+  const drawdownTrigger = Number((d.strategy && d.strategy.max_portfolio_drawdown_pct) ?? 0.20);
+  const drawdownResume = Number((d.strategy && d.strategy.drawdown_resume_below_pct) ?? 0.12);
+  sec.appendChild(el('div', {
+    class: 'sub',
+    text: p.drawdown_paused
+      ? `DRAWDOWN PROTECTION ACTIVE · ${drawdownLabel} drawdown · new buys paused`
+      : `Portfolio drawdown ${drawdownLabel} · pause at ${(drawdownTrigger * 100).toFixed(0)}%, resume below ${(drawdownResume * 100).toFixed(0)}%`
   }));
   if (!positions.length) {
     sec.classList.add('empty');
