@@ -292,6 +292,89 @@ def test_rebalance_targets_obey_single_name_and_sector_caps():
     assert all(value <= 2_000.0 + 0.01 for value in targets.values())
 
 
+def test_default_single_stock_cap_is_15_pct_of_equity():
+    cfg = _cfg()
+    assert abs(cfg.strategy["max_position_pct_equity"] - 0.15) < TOL
+    cfg.strategy["n_slots"] = 3
+    state = portfolio.PortfolioState.new(10_000.0)
+    order = portfolio.Ladder(cfg, state).schedule_entry(
+        [{"ticker": "AAA", "sector": "Tech", "composite": 2.0,
+          "allocation_weight": 1.8, "last_close": 100.0}]
+    )
+    assert order is not None
+    assert abs(order["notional"] - 1_500.0) < 0.02
+
+
+def test_drawdown_breaker_cancels_pending_buys_without_liquidating_positions():
+    cfg = _cfg()
+    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_portfolio_drawdown_pct"] = 0.20
+    cfg.strategy["drawdown_resume_below_pct"] = 0.12
+    state = portfolio.PortfolioState.new(10_000.0)
+    state.cash = 2_000.0
+    state.peak_equity = 10_000.0
+    state.positions = [{
+        "trade_id": 1, "ticker": "AAA", "sector": "Tech", "shares": 80.0,
+        "entry_date": "2025-01-01", "entry_price": 100.0, "cost_basis": 8_000.0,
+        "last_value": 8_000.0, "last_price": 100.0, "entry_bar": 0,
+        "allocation_weight": 1.0, "bars_held": 0,
+    }]
+    state.pending_orders = [{
+        "side": "BUY", "ticker": "BBB", "sector": "Health Care",
+        "notional": 1_000.0, "retries": 0,
+    }]
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame(
+        {"open": [75.0, 50.0], "close": [75.0, 50.0]},
+        index=["AAA", "BBB"],
+    )
+    result = ladder.run_day(
+        bar, date(2025, 1, 2),
+        shortlist=[{"ticker": "CCC", "sector": "Energy", "composite": 1.0}],
+    )
+    assert state.drawdown_paused
+    assert abs(state.current_drawdown_pct - 0.20) < TOL
+    assert [p["ticker"] for p in state.positions] == ["AAA"]
+    assert not any(o.get("side") == "BUY" for o in state.pending_orders)
+    assert any(e.get("event") == "order_cancelled" for e in result["events"])
+    assert any(e.get("event") == "drawdown_protection_activated" for e in result["events"])
+
+
+def test_drawdown_breaker_resumes_only_after_recovery_below_hysteresis_level():
+    cfg = _cfg()
+    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_position_pct_equity"] = 0.15
+    cfg.strategy["max_portfolio_drawdown_pct"] = 0.20
+    cfg.strategy["drawdown_resume_below_pct"] = 0.12
+    state = portfolio.PortfolioState.new(10_000.0)
+    state.cash = 2_000.0
+    state.peak_equity = 10_000.0
+    state.current_drawdown_pct = 0.15
+    state.drawdown_paused = True
+    state.drawdown_pause_date = "2025-01-01"
+    state.positions = [{
+        "trade_id": 1, "ticker": "AAA", "sector": "Tech", "shares": 70.0,
+        "entry_date": "2025-01-01", "entry_price": 100.0, "cost_basis": 6_500.0,
+        "last_value": 6_500.0, "last_price": 92.8571, "entry_bar": 0,
+        "allocation_weight": 1.0, "bars_held": 0,
+    }]
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame(
+        {"open": [6900.0 / 70.0, 100.0], "close": [6900.0 / 70.0, 100.0]},
+        index=["AAA", "BBB"],
+    )
+    result = ladder.run_day(
+        bar, date(2025, 1, 2),
+        shortlist=[{"ticker": "BBB", "sector": "Health Care",
+                    "composite": 2.0, "allocation_weight": 1.8}],
+    )
+    assert not state.drawdown_paused
+    assert state.current_drawdown_pct <= 0.12
+    assert any(o.get("side") == "BUY" and o.get("ticker") == "BBB"
+               for o in state.pending_orders)
+    assert any(e.get("event") == "drawdown_protection_resumed" for e in result["events"])
+
+
 def test_composite_renormalises_over_missing_blocks():
     """A name missing a whole block must not be silently penalised to zero."""
     cfg = _cfg()
