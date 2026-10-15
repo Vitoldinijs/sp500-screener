@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-10-14T01:17:41+00:00",
+  "generated_at_utc": "2026-10-15T00:36:12+00:00",
   "status": "collecting_data",
   "status_message": "Недостаточно связанных закрытых сделок: 0 из 40, необходимых для оценки.",
   "learning_enabled": false,
@@ -144,5 +144,5 @@
       "interpretation": "insufficient_observations"
     }
   ],
-  "caveat": "Descriptive associations only; not causal estimates and not a basis for changing factor weights before separate validation."
+  "caveat": "Factor associations are not causal estimates. The learner changes weights only after a chronological held-out score/return correlation improves."
 }
