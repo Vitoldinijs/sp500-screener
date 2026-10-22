@@ -23,6 +23,7 @@ from screener import allocation, evaluation, factors, learn, lifecycle, portfoli
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
+from scripts import backtest as backtest_mod  # noqa: E402
 from tests import synthetic  # noqa: E402
 
 TOL = 1e-6
@@ -687,6 +688,73 @@ def test_missing_price_data_defers_then_cancels():
     ladder.run_day(empty, date(2025, 1, 8))
     assert not state.pending_orders, "order should be cancelled after 3 retries"
     assert state.cash == 10_000.0
+
+
+def test_historical_backtest_replays_production_pipeline_and_writes_benchmark_report():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "screener" / "data").mkdir(parents=True)
+        (root / "state").mkdir()
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+
+        uni = synthetic.make_universe(26, seed=23)
+        px = synthetic.make_prices(uni, days=360, seed=24)
+        first_date = pd.Timestamp(px["date"].min())
+        first_day_prices = px[px["date"] <= first_date].copy()
+        first_day_prices.attrs["alphas"] = px.attrs.get("alphas", {})
+        fund = synthetic.make_fundamentals(
+            uni, first_day_prices, asof=first_date.date().isoformat(), seed=25
+        )
+        uni.to_csv(root / "screener" / "data" / "sp500.csv", index=False)
+        fund_mod.append_snapshot(fund, root / "state" / "fundamentals.csv")
+
+        market_days = sorted(pd.to_datetime(
+            px.loc[px["ticker"] == "SPY", "date"].unique()
+        ))
+        start = market_days[305].date()
+        end = market_days[318].date()
+        output = root / "backtest-output"
+        report = backtest_mod.run_backtest(
+            root / "config.yml", px, start, end, output,
+            warmup_sessions=252, verbose=False,
+        )
+
+        curve = pd.read_csv(output / "equity_curve.csv")
+        assert report["actual_period"]["start"] == start.isoformat()
+        assert report["actual_period"]["end"] == end.isoformat()
+        assert report["actual_period"]["trading_sessions"] == 14
+        assert report["initial_capital"] == 10_000.0
+        assert len(curve) == 14
+        assert abs(float(curve["benchmark_equity"].iloc[0]) - 10_000.0) < 0.01
+        assert report["benchmark"]["symbol"] == "SPY"
+        assert report["benchmark"]["total_return"] is not None
+        assert "excess_total_return" in report["relative_to_benchmark"]
+        assert (output / "summary.json").exists()
+        assert (output / "trades.csv").exists()
+        assert any("current S&P 500 constituent snapshot" in x for x in report["limitations"])
+
+
+def test_historical_backtest_refuses_fundamentals_lookahead():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "screener" / "data").mkdir(parents=True)
+        (root / "state").mkdir()
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+        uni, px, fund = _fixture(n=8, days=320)
+        uni.to_csv(root / "screener" / "data" / "sp500.csv", index=False)
+        fund["asof"] = "2024-06-01"
+        fund_mod.append_snapshot(fund, root / "state" / "fundamentals.csv")
+        start = pd.Timestamp(px["date"].min()).date()
+        end = pd.Timestamp(px["date"].max()).date()
+        try:
+            backtest_mod.run_backtest(
+                root / "config.yml", px, start, end, root / "output",
+                warmup_sessions=252, verbose=False,
+            )
+        except ValueError as exc:
+            assert "introduce look-ahead bias" in str(exc)
+        else:
+            raise AssertionError("backtest must not use later fundamental values in earlier dates")
 
 
 # ---------------------------------------------------------------------------

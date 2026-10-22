@@ -13,3 +13,6 @@ state/cache/prices.csv.gz
 
 # Local secrets — the real key belongs in GitHub Secrets, never in the repo.
 .env
+
+# Local results from historical replay; upload as an Actions artifact when needed.
+backtest-results/
