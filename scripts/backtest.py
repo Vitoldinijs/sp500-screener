@@ -56,6 +56,7 @@ def _source_paths(config_path: Path) -> tuple[Config, Path, Path]:
     config_path = config_path.resolve()
     source_root = config_path.parent
     cfg = Config.load(config_path)
+    cfg.root = source_root
     universe_path = source_root / cfg["paths"]["universe_csv"]
     fundamentals_path = source_root / cfg["paths"]["fundamentals_csv"]
     return cfg, universe_path, fundamentals_path
