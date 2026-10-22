@@ -436,11 +436,11 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
             ]
             if first_universe_snapshot is None:
                 limitations.append(
-                    "No dated constituent history was available; the current S&P 500 list was used for the full period, so survivorship bias remains."
+                    "No dated constituent history was available; the committed fallback constituent list was used for the full period, so survivorship bias remains."
                 )
             elif not membership_history_covers_start:
                 limitations.append(
-                    f"Dated constituent history begins {first_universe_snapshot}; the current S&P 500 list was used before that date, so survivorship bias remains in the pre-archive interval."
+                    f"Dated constituent history begins {first_universe_snapshot}; the committed fallback constituent list was used before that date, so survivorship bias remains in the pre-archive interval."
                 )
             if sessions < 126:
                 limitations.append(
