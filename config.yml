@@ -158,4 +158,5 @@ paths:
   av_usage: "state/cache/av_usage.json"           # API quota bookkeeping
   excel_report: "Portfolio.xlsx"                  # committed at repo root
   universe_csv: "screener/data/sp500.csv"         # fallback constituent list
+  universe_history_csv: "state/universe_history.csv" # dated point-in-time S&P 500 membership
   dashboard_json: "docs/data/dashboard.json"      # committed: feeds docs/ site
