@@ -571,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config_path = Path(args.config).resolve()
         cfg, universe_path, fundamentals_path = _source_paths(config_path)
+        cfg.root = config_path.parent
         earliest_fundamental, latest_fundamental, _ = _fundamental_coverage(fundamentals_path)
         requested_start = _as_date(args.start, "start") if args.start else earliest_fundamental
         requested_end = _as_date(args.end, "end") if args.end else _latest_completed_end()
