@@ -384,8 +384,10 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
             fund_dates = pd.to_datetime(fund.get("asof"), errors="coerce").dropna()
             fund_dates = fund_dates[fund_dates <= pd.Timestamp(actual_end)]
             historical_fund_tickers = int(
-                fund.loc[pd.to_datetime(fund["asof"], errors="coerce") <= pd.Timestamp(actual_end),
-                         "ticker"].nunique()
+                fund.loc[
+                    pd.to_datetime(fund["asof"], errors="coerce") <= pd.Timestamp(actual_end),
+                    "ticker",
+                ].nunique()
             ) if not fund_dates.empty and "ticker" in fund else 0
             prices_present = set(prices["ticker"].astype(str).unique())
             missing_tickers = sorted(set(raw_universe["ticker"].dropna().astype(str)) - prices_present)
@@ -538,10 +540,8 @@ def main(argv: list[str] | None = None) -> int:
         raw_universe = pd.read_csv(universe_path)
         benchmark = str(cfg.data.get("benchmark", "SPY")).upper()
         tickers = sorted(set(raw_universe["ticker"].dropna().astype(str).str.upper()) | {benchmark})
-        warmup_calendar_days = int(math.ceil(args.warmup_sessions * 365.25 / 252.0)) + 30
-        download_start = requested_start - timedelta(days=warmup_calendar_days)
         prices = _read_price_history(
-            cfg, tickers, download_start, requested_end,
+            cfg, tickers, requested_start, requested_end,
             args.warmup_sessions, args.offline,
         )
         summary = run_backtest(
