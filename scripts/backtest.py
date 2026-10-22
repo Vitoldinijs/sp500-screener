@@ -56,6 +56,7 @@ def _source_paths(config_path: Path) -> tuple[Config, Path, Path]:
     config_path = config_path.resolve()
     source_root = config_path.parent
     cfg = Config.load(config_path)
+    cfg.root = source_root
     universe_path = source_root / cfg["paths"]["universe_csv"]
     fundamentals_path = source_root / cfg["paths"]["fundamentals_csv"]
     return cfg, universe_path, fundamentals_path
@@ -234,13 +235,34 @@ def _relative_metrics(equity: pd.DataFrame) -> dict:
     }
 
 
+def _read_universe_history(path: Path, on_or_before: date) -> pd.DataFrame:
+    """Read archived constituents without admitting dates after the replay end."""
+    columns = ["asof", "ticker", "name", "sector", "industry", "asof_dt"]
+    if not path.exists():
+        return pd.DataFrame(columns=columns)
+    frame = pd.read_csv(path)
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not {"asof", "ticker"}.issubset(frame.columns):
+        raise RuntimeError(f"Invalid point-in-time universe history at {path}.")
+    frame["asof_dt"] = pd.to_datetime(frame["asof"], errors="coerce")
+    frame["ticker"] = frame["ticker"].astype(str).str.strip().str.upper().str.replace(".", "-", regex=False)
+    frame = frame[
+        frame["asof_dt"].notna()
+        & (frame["asof_dt"] <= pd.Timestamp(on_or_before))
+        & frame["ticker"].ne("")
+        & frame["ticker"].ne("NAN")
+    ].copy()
+    return frame
+
+
 def _copy_replay_inputs(config_path: Path, workspace: Path) -> Config:
     config_path = config_path.resolve()
     source_root = config_path.parent
     raw_cfg = Config.load(config_path)
     destination_config = workspace / "config.yml"
     shutil.copy2(config_path, destination_config)
-    for key in ("universe_csv", "fundamentals_csv"):
+    for key in ("universe_csv", "fundamentals_csv", "universe_history_csv"):
         relative = Path(raw_cfg["paths"][key])
         src = source_root / relative
         if not src.exists():
@@ -284,8 +306,21 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
     raw_universe = pd.read_csv(universe_path)
     if "ticker" not in raw_universe:
         raise RuntimeError("Universe snapshot must contain a ticker column.")
+    universe_history = _read_universe_history(
+        template.path("universe_history_csv"), end_date
+    )
+    history_tickers = set(universe_history["ticker"].dropna().astype(str).str.upper())
+    universe_tickers = (
+        set(raw_universe["ticker"].dropna().astype(str).str.upper()) | history_tickers
+    )
+    history_dates = pd.to_datetime(universe_history.get("asof_dt"), errors="coerce").dropna()
+    first_universe_snapshot = history_dates.min().date() if not history_dates.empty else None
+    last_universe_snapshot = history_dates.max().date() if not history_dates.empty else None
+    membership_history_covers_start = (
+        first_universe_snapshot is not None and first_universe_snapshot <= start_date
+    )
     benchmark_symbol = str(template.data.get("benchmark", "SPY")).upper()
-    tickers = sorted(set(raw_universe["ticker"].dropna().astype(str).str.upper()) | {benchmark_symbol})
+    tickers = sorted(universe_tickers | {benchmark_symbol})
 
     prices = price_mod.normalise(prices_long)
     prices = prices[(prices["date"] <= pd.Timestamp(end_date)) & prices["ticker"].isin(tickers)]
@@ -390,16 +425,23 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                 ].nunique()
             ) if not fund_dates.empty and "ticker" in fund else 0
             prices_present = set(prices["ticker"].astype(str).unique())
-            missing_tickers = sorted(set(raw_universe["ticker"].dropna().astype(str)) - prices_present)
+            missing_tickers = sorted(universe_tickers - prices_present)
             sessions = int(len(equity))
             elapsed_days = max(0, (actual_end - actual_start).days)
             limitations = [
-                "The available universe is the current S&P 500 constituent snapshot; historical membership is not reconstructed, so survivorship bias remains.",
                 "Fundamental values are only used from snapshots dated on or before each simulated session.",
                 "Trades execute at the next session open and include the configured slippage and commission model.",
                 "SPY is the buy-and-hold benchmark, marked on the same session dates.",
                 "A successful historical simulation is not evidence of future profitability.",
             ]
+            if first_universe_snapshot is None:
+                limitations.append(
+                    "No dated constituent history was available; the committed fallback constituent list was used for the full period, so survivorship bias remains."
+                )
+            elif not membership_history_covers_start:
+                limitations.append(
+                    f"Dated constituent history begins {first_universe_snapshot}; the committed fallback constituent list was used before that date, so survivorship bias remains in the pre-archive interval."
+                )
             if sessions < 126:
                 limitations.append(
                     f"Only {sessions} trading sessions were tested (<126); annualized metrics are exploratory."
@@ -414,7 +456,7 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                 )
 
             summary = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "requested_period": {
                     "start": start_date.isoformat(),
@@ -452,8 +494,18 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "risk_free_rate": 0.0,
                     "annualization_sessions": TRADING_DAYS_PER_YEAR,
                 },
+                "universe_membership": {
+                    "history_file_available": bool(not universe_history.empty),
+                    "first_snapshot_date": first_universe_snapshot.isoformat() if first_universe_snapshot else None,
+                    "last_snapshot_date": last_universe_snapshot.isoformat() if last_universe_snapshot else None,
+                    "snapshot_dates_available": int(history_dates.dt.date.nunique()),
+                    "point_in_time_membership_used_for_entire_period": bool(membership_history_covers_start),
+                    "selection_rule": "latest archived membership snapshot on or before each session; static CSV fallback before first archive",
+                },
                 "data_coverage": {
                     "current_universe_tickers": int(len(raw_universe)),
+                    "distinct_archived_universe_tickers_by_end": int(len(history_tickers)),
+                    "distinct_tickers_in_current_or_archived_universe": int(len(universe_tickers)),
                     "tickers_with_any_price_history": int(len(prices_present)),
                     "tickers_missing_price_history": missing_tickers,
                     "fundamental_snapshot_first_date": earliest_fundamental.isoformat(),
@@ -519,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config_path = Path(args.config).resolve()
         cfg, universe_path, fundamentals_path = _source_paths(config_path)
+        cfg.root = config_path.parent
         earliest_fundamental, latest_fundamental, _ = _fundamental_coverage(fundamentals_path)
         requested_start = _as_date(args.start, "start") if args.start else earliest_fundamental
         requested_end = _as_date(args.end, "end") if args.end else _latest_completed_end()
@@ -538,8 +591,14 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("End date must be on or after start date.")
 
         raw_universe = pd.read_csv(universe_path)
+        universe_history = _read_universe_history(cfg.path("universe_history_csv"), requested_end)
+        historical_tickers = set(universe_history["ticker"].dropna().astype(str).str.upper())
         benchmark = str(cfg.data.get("benchmark", "SPY")).upper()
-        tickers = sorted(set(raw_universe["ticker"].dropna().astype(str).str.upper()) | {benchmark})
+        tickers = sorted(
+            set(raw_universe["ticker"].dropna().astype(str).str.upper())
+            | historical_tickers
+            | {benchmark}
+        )
         prices = _read_price_history(
             cfg, tickers, requested_start, requested_end,
             args.warmup_sessions, args.offline,
@@ -554,6 +613,7 @@ def main(argv: list[str] | None = None) -> int:
             "strategy": summary["strategy"],
             "benchmark": summary["benchmark"],
             "relative_to_benchmark": summary["relative_to_benchmark"],
+            "universe_membership": summary["universe_membership"],
             "limitations": summary["limitations"],
             "output_dir": str(Path(args.output_dir).resolve()),
         }, ensure_ascii=False, indent=2))

@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring  # noqa: E402
+from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring, universe  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -690,6 +690,38 @@ def test_missing_price_data_defers_then_cancels():
     assert state.cash == 10_000.0
 
 
+
+def test_universe_history_uses_latest_snapshot_on_or_before_asof():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "screener" / "data").mkdir(parents=True)
+        (root / "state").mkdir()
+        shutil.copy(ROOT / "config.yml", root / "config.yml")
+        cfg = Config.load(root / "config.yml")
+        cfg.root = root
+        pd.DataFrame([{
+            "ticker": "LIVE", "name": "Current member",
+            "sector": "Technology", "industry": "Software",
+        }]).to_csv(root / "screener" / "data" / "sp500.csv", index=False)
+
+        history_path = root / "state" / "universe_history.csv"
+        universe.append_snapshot(pd.DataFrame([{
+            "ticker": "AAA", "name": "Former member",
+            "sector": "Industrials", "industry": "Machinery",
+        }]), history_path, "2025-01-01")
+        universe.append_snapshot(pd.DataFrame([{
+            "ticker": "BBB", "name": "New member",
+            "sector": "Technology", "industry": "Software",
+        }]), history_path, "2025-02-01")
+
+        jan = universe.load_universe(cfg, allow_network=False, asof=date(2025, 1, 15))
+        feb = universe.load_universe(cfg, allow_network=False, asof=date(2025, 2, 15))
+        before_archive = universe.load_universe(cfg, allow_network=False, asof=date(2024, 12, 31))
+        assert jan["ticker"].tolist() == ["AAA"]
+        assert feb["ticker"].tolist() == ["BBB"]
+        assert before_archive["ticker"].tolist() == ["LIVE"]
+
+
 def test_historical_backtest_replays_production_pipeline_and_writes_benchmark_report():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -706,6 +738,7 @@ def test_historical_backtest_replays_production_pipeline_and_writes_benchmark_re
             uni, first_day_prices, asof=first_date.date().isoformat(), seed=25
         )
         uni.to_csv(root / "screener" / "data" / "sp500.csv", index=False)
+        universe.append_snapshot(uni, root / "state" / "universe_history.csv", first_date.date())
         fund_mod.append_snapshot(fund, root / "state" / "fundamentals.csv")
 
         market_days = sorted(pd.to_datetime(
@@ -731,7 +764,8 @@ def test_historical_backtest_replays_production_pipeline_and_writes_benchmark_re
         assert "excess_total_return" in report["relative_to_benchmark"]
         assert (output / "summary.json").exists()
         assert (output / "trades.csv").exists()
-        assert any("current S&P 500 constituent snapshot" in x for x in report["limitations"])
+        assert report["universe_membership"]["point_in_time_membership_used_for_entire_period"] is True
+        assert not any("survivorship bias remains" in x for x in report["limitations"])
 
 
 def test_historical_backtest_refuses_fundamentals_lookahead():

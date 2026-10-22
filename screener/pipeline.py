@@ -55,7 +55,7 @@ def run_daily(cfg: Config, allow_network: bool = True,
     dcfg = cfg.data
 
     # --- universe ---------------------------------------------------------
-    uni = universe.load_universe(cfg, allow_network=allow_network)
+    uni = universe.load_universe(cfg, allow_network=allow_network, asof=asof)
     tickers = sorted(uni["ticker"].astype(str).unique().tolist())
     bench = dcfg.get("benchmark", "SPY")
     fetch_list = tickers + ([bench] if bench not in tickers else [])
@@ -82,6 +82,11 @@ def run_daily(cfg: Config, allow_network: bool = True,
     open_wide = price_mod.to_wide(prices_long, "open")
     data_date = close_wide.index.max()
     _log(f"prices through {data_date:%Y-%m-%d} ({len(close_wide.columns)} tickers)")
+
+    # Archive live membership on the date for which we have market data.
+    # A replay passes asof explicitly and must never manufacture past snapshots.
+    if asof is None:
+        universe.append_snapshot(uni, cfg.path("universe_history_csv"), data_date.date())
 
     # --- fundamentals (weekly file, read point-in-time) -------------------
     fund = fund_mod.latest_asof(cfg.path("fundamentals_csv"),
@@ -396,6 +401,7 @@ def _safe_float(value):
 def run_weekly(cfg: Config, limit: int | None = None) -> dict:
     ensure_dirs(cfg)
     uni = universe.load_universe(cfg, allow_network=True)
+    universe.append_snapshot(uni, cfg.path("universe_history_csv"), date.today())
     tickers = sorted(uni["ticker"].astype(str).unique().tolist())
     if limit:
         tickers = tickers[:limit]
