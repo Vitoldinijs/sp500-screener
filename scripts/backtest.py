@@ -460,7 +460,7 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "fundamental_snapshot_latest_date_available": (
                         fund_dates.max().date().isoformat() if not fund_dates.empty else None
                     ),
-                    "fundamental_snapshot_dates_available": snapshot_count,
+                    "fundamental_snapshot_dates_available": int(fund_dates.dt.date.nunique()),
                     "fundamental_tickers_with_snapshots_by_end": historical_fund_tickers,
                     "warmup_sessions_requested": int(warmup_sessions),
                     "price_history_sessions_before_backtest": int(
