@@ -698,6 +698,7 @@ def test_universe_history_uses_latest_snapshot_on_or_before_asof():
         (root / "state").mkdir()
         shutil.copy(ROOT / "config.yml", root / "config.yml")
         cfg = Config.load(root / "config.yml")
+        cfg.root = root
         pd.DataFrame([{
             "ticker": "LIVE", "name": "Current member",
             "sector": "Technology", "industry": "Software",
