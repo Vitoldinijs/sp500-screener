@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-10-27T01:31:17+00:00",
+  "generated_at_utc": "2026-10-28T01:27:30+00:00",
   "status": "collecting_data",
   "status_message": "Недостаточно связанных закрытых сделок: 0 из 40, необходимых для оценки.",
   "learning_enabled": false,
@@ -12,7 +12,7 @@
     "min_factor_observations": 8
   },
   "counts": {
-    "closed_trades": 2,
+    "closed_trades": 3,
     "linked_trades": 0,
     "learning_eligible_flagged": 0,
     "evaluable_trades": 0,

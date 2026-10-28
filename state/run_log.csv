@@ -46,3 +46,4 @@ run_time,data_date,universe_size,eligible_count,candidate,av_verdict,av_reason,a
 2026-10-23 00:43 UTC,2026-10-22,503,419,MU,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-10-18,2,10374.14,550.02,21
 2026-10-24 00:48 UTC,2026-10-22,503,419,CRM,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-10-18,2,10374.14,550.02,21
 2026-10-27 01:31 UTC,2026-10-23,503,419,MU,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-10-18,2,10326.89,547.85,21
+2026-10-28 01:27 UTC,2026-10-26,503,420,MU,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-10-25,2,10371.38,987.8,20
