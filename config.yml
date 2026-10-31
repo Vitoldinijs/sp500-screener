@@ -161,6 +161,29 @@ learning:
   min_validation_ic_improvement: 0.01 # held-out Spearman IC must improve by at least 0.01
   rollback_if_worse: true       # reject proposals that fail the held-out check
 
+# ---- Market regime: how much to be invested at all -------------------------
+# The composite score is cross-sectional and cannot answer "is now a bad time
+# to own stocks" — in a falling market the best-ranked name still scores
+# highly, because its peers are falling too. This block is the separate,
+# market-level input that lets the ladder sit in cash and wait.
+#
+# Output is the fraction of equity the ladder may deploy, glided between
+# min_exposure and max_exposure. It never reaches zero on purpose: a rule
+# allowed to go fully to cash eventually does so just before a rebound, and
+# timing rules are the part of a strategy most likely to look good in-sample
+# and fail afterwards. Treat these weights as unvalidated until the backtest
+# has measured them.
+regime:
+  enabled: true
+  min_exposure: 0.30            # floor in the worst assessed conditions
+  max_exposure: 1.00
+  trend_window: 200             # sessions for the benchmark moving average
+  weights:
+    trend: 0.50                 # benchmark vs its long average — most robust
+    volatility: 0.20            # VIX level
+    credit: 0.20                # high-yield spread vs its own 2y range
+    curve: 0.10                 # 10y-2y, context rather than trigger
+
 # ---- Data sources ----------------------------------------------------------
 data:
   price_provider: "yfinance"    # yfinance -> stooq fallback (both keyless)
@@ -188,6 +211,7 @@ paths:
   weights_history: "state/weights_history.csv"    # committed: learning log
   run_log: "state/run_log.csv"                    # committed: one row per run
   prices_cache: "state/cache/prices.csv.gz"       # gitignored, rebuilt daily
+  macro_csv: "state/macro.csv"                    # committed: FRED series, PIT via lags
   av_usage: "state/cache/av_usage.json"           # API quota bookkeeping
   excel_report: "Portfolio.xlsx"                  # committed at repo root
   universe_csv: "screener/data/sp500.csv"         # fallback constituent list

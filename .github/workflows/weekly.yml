@@ -53,6 +53,10 @@ jobs:
       - name: Refresh fundamentals
         env:
           ALPHAVANTAGE_KEY: ${{ secrets.ALPHAVANTAGE_KEY }}
+          # Free key from fredapi / fred.stlouisfed.org. Absent, the macro
+          # refresh is skipped and the regime layer falls back to whatever
+          # is cached (and to full exposure if there is nothing at all).
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: |
           python -m screener weekly \
             ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}

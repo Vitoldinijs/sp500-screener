@@ -22,6 +22,8 @@ import numpy as np
 import pandas as pd
 
 from . import benchmark as bmod
+from . import regime as regime_mod
+from .data import macro as macro_mod
 from . import excel_report, evaluation, factors, learn, lifecycle, portfolio, scoring, universe
 from .config import Config, ensure_dirs
 from .data import alpha_vantage as av
@@ -173,8 +175,28 @@ def run_daily(cfg: Config, allow_network: bool = True,
         chosen["av_verdict"] = "unverified"
         chosen["av_reason"] = "verification disabled or offline"
 
+    # --- market regime: how much may be invested at all --------------------
+    # Read before trading so the day's entry respects it. Macro refresh is
+    # best-effort: a FRED outage leaves the cached series in place, and with
+    # nothing at all the assessment returns full exposure rather than
+    # quietly de-risking.
+    macro_frame = macro_mod.get_macro(
+        cfg.path("macro_csv"),
+        macro_mod.default_start(data_date.date() if hasattr(data_date, "date") else data_date),
+        data_date.date() if hasattr(data_date, "date") else data_date,
+        allow_network=allow_network,
+    )
+    bench_close = close_wide[bench] if bench in close_wide.columns else None
+    assessment = regime_mod.assess(
+        cfg, bench_close, macro_frame,
+        data_date.date() if hasattr(data_date, "date") else data_date,
+    )
+    _log(f"regime: exposure {assessment.exposure:.0%} (score {assessment.score:.2f})"
+         + (f" — {'; '.join(assessment.notes)}" if assessment.notes else ""))
+
     # --- trade ------------------------------------------------------------
     ladder = portfolio.Ladder(cfg, state)
+    ladder.set_exposure(assessment.exposure)
     if not already_ran:
         bar = pd.DataFrame({
             "open": open_wide.loc[data_date] if data_date in open_wide.index else np.nan,

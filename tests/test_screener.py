@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring, universe  # noqa: E402
+from screener.data import macro as macro_mod  # noqa: E402
+from screener import regime as regime_mod  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -1304,6 +1306,174 @@ def test_thin_sectors_fall_back_to_market_wide_scoring():
     # The fallback is the ordinary market-wide z-score, nothing bespoke.
     market = scoring.zscore(frame["v"])
     assert abs(z.loc["S0"] - market.loc["S0"]) < 1e-9
+
+
+def _macro_frame():
+    """CPI printed monthly, 10y yield printed daily."""
+    rows = []
+    for month in (8, 9, 10):
+        rows.append({"date": f"2026-{month:02d}-01", "series_id": "CPIAUCSL",
+                     "value": 300.0 + month})
+    for day in range(1, 21):
+        rows.append({"date": f"2026-10-{day:02d}", "series_id": "DGS10",
+                     "value": 4.0 + day / 100.0})
+    return macro_mod.normalise(pd.DataFrame(rows))
+
+
+def test_macro_never_returns_an_unpublished_observation():
+    """The whole point of the module: no reading before its release date.
+
+    October CPI is stamped 2026-10-01 but is not released until mid-November.
+    Asking for macro state on 2026-10-20 must therefore still return the
+    AUGUST print — using October's would be a six-week look-ahead, which is
+    enough on its own to make a backtest meaningless.
+    """
+    frame = _macro_frame()
+
+    seen = macro_mod.as_of(frame, date(2026, 10, 20))
+    assert "cpi" in seen, "some CPI print should be visible by late October"
+    assert seen["cpi"] != 310.0, (
+        "October's print is stamped 2026-10-01 but is not released until "
+        "mid-November — returning it here is a six-week look-ahead"
+    )
+    # September's print (stamped 09-01, released ~10-16) is the newest one
+    # that had actually come out by 2026-10-20.
+    assert seen["cpi"] == 309.0
+
+    # Once enough time has passed the newer print becomes visible, so the lag
+    # is delaying the data rather than hiding it permanently.
+    later = macro_mod.as_of(frame, date(2026, 12, 1))
+    assert later["cpi"] == 310.0
+
+
+def test_macro_daily_series_is_available_with_only_a_short_lag():
+    frame = _macro_frame()
+    seen = macro_mod.as_of(frame, date(2026, 10, 20))
+    # 2026-10-20 minus the 2-day lag -> the 18th is the newest visible print.
+    assert abs(seen["treasury_10y"] - 4.18) < 1e-9
+
+
+def test_macro_history_applies_the_same_lag_as_as_of():
+    frame = _macro_frame()
+    asof = date(2026, 10, 20)
+    hist = macro_mod.history(frame, "treasury_10y", asof=asof)
+    assert not hist.empty
+    assert hist.index.max() <= pd.Timestamp(asof)
+    assert abs(float(hist.iloc[-1]) - macro_mod.as_of(frame, asof)["treasury_10y"]) < 1e-9
+
+    cpi_hist = macro_mod.history(frame, "cpi", asof=asof)
+    assert float(cpi_hist.iloc[-1]) == 309.0, "history must not outrun as_of"
+    assert 310.0 not in set(cpi_hist.values), "unpublished print leaked in"
+
+
+def test_macro_degrades_to_cache_without_a_key(tmp_path=None):
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        cache = Path(td) / "macro.csv"
+        _macro_frame().to_csv(cache, index=False)
+        # No key and no network: must still return the cached frame, not raise.
+        got = macro_mod.get_macro(cache, date(2026, 1, 1), date(2026, 10, 20),
+                                  api_key="", allow_network=False)
+        assert not got.empty
+        assert set(got["series_id"]) == {"CPIAUCSL", "DGS10"}
+
+
+def test_macro_missing_cache_and_no_network_is_empty_not_an_error():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        got = macro_mod.get_macro(Path(td) / "nope.csv", date(2026, 1, 1),
+                                  date(2026, 10, 20), api_key="",
+                                  allow_network=False)
+        assert got.empty
+        assert macro_mod.as_of(got, date(2026, 10, 20)) == {}
+
+
+def _regime_macro(vix, hy_last, curve, n=600):
+    """Macro frame with a realistic spread distribution, not a constant."""
+    rng = np.random.default_rng(7)
+    dates = pd.date_range("2025-01-01", periods=n, freq="D")
+    rows = []
+    for i, dt in enumerate(dates):
+        rows.append({"date": dt, "series_id": "VIXCLS", "value": vix})
+        rows.append({"date": dt, "series_id": "T10Y2Y", "value": curve})
+        spread = float(rng.uniform(3.0, 7.0)) if i < n - 1 else hy_last
+        rows.append({"date": dt, "series_id": "BAMLH0A0HYM2", "value": spread})
+    return macro_mod.normalise(pd.DataFrame(rows))
+
+
+def test_regime_cuts_exposure_in_a_bad_tape_but_never_below_the_floor():
+    cfg = _cfg()
+    floor = float(cfg["regime"]["min_exposure"])
+    asof = date(2026, 10, 1)
+    falling = pd.Series(np.linspace(120.0, 85.0, 260))
+
+    worst = regime_mod.assess(cfg, falling, _regime_macro(40.0, 8.0, -0.6), asof)
+    assert worst.exposure >= floor - 1e-9, "exposure fell through the floor"
+    assert worst.exposure < 0.5, "a falling, panicked tape should cut exposure"
+
+    rising = pd.Series(np.linspace(85.0, 120.0, 260))
+    best = regime_mod.assess(cfg, rising, _regime_macro(13.0, 3.1, 1.3), asof)
+    assert best.exposure > 0.9, "a calm uptrend should allow near-full exposure"
+    assert best.exposure > worst.exposure
+
+
+def test_regime_defaults_to_full_exposure_when_data_is_missing():
+    """A broken feed must not be able to quietly move the book to cash."""
+    cfg = _cfg()
+    empty = macro_mod.normalise(pd.DataFrame(columns=["date", "series_id", "value"]))
+    got = regime_mod.assess(cfg, None, empty, date(2026, 10, 1))
+    assert got.exposure == float(cfg["regime"]["max_exposure"])
+    assert any("full exposure" in n for n in got.notes)
+
+
+def test_exposure_limits_new_buying_without_selling_anything():
+    """Lowering exposure stops entries; it must never liquidate holdings."""
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame({"open": [100.0], "close": [100.0]}, index=["AAA"])
+    ladder.run_day(bar, date(2025, 1, 2),
+                   shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 1.0,
+                               "allocation_weight": 1.4, "last_close": 100.0}])
+    ladder.run_day(bar, date(2025, 1, 3))
+    assert state.positions
+    held = state.positions[0]["shares"]
+
+    # Clamp exposure below what is already invested.
+    ladder.set_exposure(0.05)
+    assert ladder._exposure_room(state.equity()) == 0.0
+    blocked = ladder.schedule_entry(
+        [{"ticker": "BBB", "sector": "Other", "composite": 2.0,
+          "allocation_weight": 1.8, "last_close": 50.0}]
+    )
+    assert blocked is None, "no new entry is allowed above the exposure ceiling"
+    assert state.positions[0]["shares"] == held, "exposure must not force a sale"
+    assert not any(o["side"] == "SELL" for o in state.pending_orders)
+
+
+def test_exposure_scales_how_much_capital_is_deployed():
+    cfg = _cfg()
+    deployed = {}
+    for exposure in (1.0, 0.5, 0.3):
+        state = portfolio.PortfolioState.new(10_000.0)
+        ladder = portfolio.Ladder(cfg, state)
+        ladder.set_exposure(exposure)
+        total = 0.0
+        for i in range(10):
+            order = ladder.schedule_entry(
+                [{"ticker": f"T{i}", "sector": f"S{i}", "composite": 2.0,
+                  "allocation_weight": 1.4, "last_close": 100.0}]
+            )
+            if order is None:
+                break
+            # schedule_entry queues the order itself — appending again here
+            # would double-count it against reserved cash.
+            total += float(order["notional"])
+        deployed[exposure] = total
+    assert deployed[1.0] > deployed[0.5] > deployed[0.3]
+    # Never more than the ceiling allows, at any setting.
+    for exposure, total in deployed.items():
+        assert total <= 10_000.0 * exposure + 1.0
 
 
 if __name__ == "__main__":

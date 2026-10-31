@@ -138,6 +138,11 @@ class Ladder:
         # is sized up until the per-name cap stops it, which is the whole
         # point of letting conviction drive the book.
         self.neutral_weight = max(1e-9, allocation_multiplier(0.5, st))
+        # Fraction of equity the regime layer currently permits in stocks.
+        # 1.0 means "no opinion"; the pipeline lowers it in poor conditions.
+        # Set via set_exposure() rather than read from config, because it is
+        # recomputed per trading day from market data.
+        self.exposure = 1.0
         self.min_position_notional = float(st.get("min_position_notional", 0.0))
         self.exit_rank_floor = float(st.get("exit_rank_percentile_below", 0.35))
         self.exit_confirmation = max(1, int(st.get("exit_confirmation_observations", 3)))
@@ -660,6 +665,28 @@ class Ladder:
             return 1.0
         return max(sum(weights) / len(weights), 1e-9)
 
+    def set_exposure(self, exposure: float) -> None:
+        """Cap how much of equity may be held in stocks for this session."""
+        try:
+            value = float(exposure)
+        except (TypeError, ValueError):
+            return
+        if np.isfinite(value):
+            self.exposure = min(1.0, max(0.0, value))
+
+    def _exposure_room(self, equity: float) -> float:
+        """Headroom to the regime's invested-capital ceiling.
+
+        Deliberately one-directional: when exposure drops, this stops NEW
+        buying but never forces a sale. Liquidating into a weak tape is how
+        a timing rule turns a drawdown into a realised loss, and exits here
+        remain the job of the signal review and the drawdown breaker.
+        """
+        invested = self.s.positions_value()
+        pending = sum(float(o.get("notional", 0.0))
+                      for o in self.s.pending_orders if o.get("side") == "BUY")
+        return max(0.0, equity * self.exposure - invested - pending)
+
     # -- step 4: queue the entry ------------------------------------------
     def schedule_entry(
         self, shortlist: list[dict], name_map: dict | None = None,
@@ -697,7 +724,8 @@ class Ladder:
         # it has to be an explicit constraint, or buying would run the book
         # down to zero cash.
         deployable = max(0.0, self.s.available_cash - equity * self._cash_reserve_pct())
-        budget = min(target, max_position, sector_room, deployable)
+        budget = min(target, max_position, sector_room, deployable,
+                     self._exposure_room(equity))
         # A position too small to matter is churn: it pays spread on the way
         # in and out and can never move the portfolio. This floor, not a slot
         # count, is what stops the book filling with dust.
