@@ -1568,6 +1568,76 @@ def test_macro_driver_trend_is_capped():
     assert abs(trends["oil_wti"]) <= macro_fac.TREND_CLIP + 1e-9
 
 
+def test_backtest_overrides_apply_to_the_copy_not_the_live_config():
+    """A variant sweep must never mutate the repository's config.yml."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+    import yaml as _yaml
+    import tempfile
+
+    before = (ROOT / "config.yml").read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bt._copy_replay_inputs(
+            ROOT / "config.yml", Path(td),
+            overrides=["strategy.max_position_pct_equity=0.15",
+                       "regime.enabled=false"],
+            no_fundamentals=True,
+        )
+        raw = _yaml.safe_load((Path(td) / "config.yml").read_text(encoding="utf-8"))
+
+    assert (ROOT / "config.yml").read_text(encoding="utf-8") == before, \
+        "the live config was modified by a backtest run"
+    assert raw["strategy"]["max_position_pct_equity"] == 0.15
+    assert raw["regime"]["enabled"] is False
+
+
+def test_no_fundamentals_mode_zero_weights_fundamental_blocks():
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    raw = {
+        "factor_weights": {"value": 0.16, "quality": 0.14, "growth": 0.09,
+                           "momentum": 0.28, "earnings": 0.11, "risk": 0.06,
+                           "technical": 0.08, "macro": 0.08},
+        "filters": {"require_market_cap": True, "min_market_cap": 2_000_000_000,
+                    "max_missing_fundamentals": 3, "max_net_debt_ebitda": 4.0},
+        "sector_neutral_blocks": ["value", "quality", "growth", "risk"],
+    }
+    bt._disable_fundamental_blocks(raw)
+
+    weights = raw["factor_weights"]
+    for block in bt.FUNDAMENTAL_BLOCKS:
+        assert block not in weights, f"{block} still carries weight"
+    assert abs(sum(weights.values()) - 1.0) < 1e-6, "weights must renormalise to 1"
+    assert set(weights) == {"momentum", "risk", "technical", "macro"}
+    # Filters that need fundamental fields must not silently exclude the
+    # whole universe once those fields are unavailable.
+    assert raw["filters"]["require_market_cap"] is False
+    assert raw["filters"]["max_missing_fundamentals"] >= 99
+    # Neutralising a block that no longer exists would be meaningless.
+    assert raw["sector_neutral_blocks"] == ["risk"]
+
+
+def test_override_rejects_an_unknown_config_path():
+    """A typo in a sweep must fail loudly, not silently change nothing."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    raw = {"strategy": {"max_position_pct_equity": 0.25}}
+    try:
+        bt._apply_overrides(raw, ["strategy.no_such_key=1"])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an unknown --set path should raise")
+
+    bt._apply_overrides(raw, ["strategy.max_position_pct_equity=0.5"])
+    assert raw["strategy"]["max_position_pct_equity"] == 0.5
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

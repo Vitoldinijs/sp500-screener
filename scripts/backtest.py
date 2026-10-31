@@ -256,12 +256,112 @@ def _read_universe_history(path: Path, on_or_before: date) -> pd.DataFrame:
     return frame
 
 
-def _copy_replay_inputs(config_path: Path, workspace: Path) -> Config:
+# Blocks that need point-in-time fundamentals, and the filters that do.
+FUNDAMENTAL_BLOCKS = ("value", "quality", "growth", "earnings")
+FUNDAMENTAL_FILTER_RELAXATIONS = {
+    "require_market_cap": False,
+    "require_dollar_volume": True,     # volume comes from prices; keep it
+    "min_market_cap": 0,
+    "max_missing_fundamentals": 99,
+    "max_net_debt_ebitda": 1e9,
+}
+
+
+def _coerce_scalar(text: str):
+    low = text.strip().lower()
+    if low in ("true", "false"):
+        return low == "true"
+    if low in ("none", "null"):
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+
+def _apply_overrides(raw: dict, overrides: list[str]) -> list[str]:
+    """Apply `section.key=value` overrides in place; return a readable log."""
+    applied = []
+    for item in overrides:
+        if "=" not in item:
+            raise ValueError(f"--set expects PATH=VALUE, got {item!r}")
+        path, _, value = item.partition("=")
+        keys = [k for k in path.strip().split(".") if k]
+        if not keys:
+            raise ValueError(f"--set has an empty path: {item!r}")
+        node = raw
+        for key in keys[:-1]:
+            if not isinstance(node.get(key), dict):
+                raise ValueError(f"--set path {path!r} does not exist in the config")
+            node = node[key]
+        if keys[-1] not in node:
+            raise ValueError(f"--set path {path!r} does not exist in the config")
+        node[keys[-1]] = _coerce_scalar(value)
+        applied.append(f"{path}={node[keys[-1]]!r}")
+    return applied
+
+
+def _disable_fundamental_blocks(raw: dict) -> list[str]:
+    """Zero out fundamental blocks and relax the filters that need them.
+
+    Weights are renormalised across the surviving blocks so the composite
+    keeps its scale. This is not a shortcut around the look-ahead guard: the
+    fundamental data is not merely ignored, it carries zero weight and no
+    ratio of any vintage can influence a decision.
+    """
+    notes = []
+    weights = raw.get("factor_weights", {})
+    dropped = {b: weights.get(b, 0.0) for b in FUNDAMENTAL_BLOCKS if b in weights}
+    remaining = {k: v for k, v in weights.items() if k not in dropped}
+    total = sum(float(v) for v in remaining.values())
+    if total <= 0:
+        raise ValueError("No non-fundamental blocks carry weight; nothing to test.")
+    raw["factor_weights"] = {k: round(float(v) / total, 6) for k, v in remaining.items()}
+    notes.append("zero-weighted blocks: " + ", ".join(sorted(dropped)))
+    notes.append("reweighted: " + ", ".join(
+        f"{k}={v}" for k, v in sorted(raw["factor_weights"].items())))
+
+    filters = raw.setdefault("filters", {})
+    for key, value in FUNDAMENTAL_FILTER_RELAXATIONS.items():
+        if key in filters:
+            filters[key] = value
+    notes.append("relaxed fundamental filters")
+
+    neutral = [b for b in (raw.get("sector_neutral_blocks") or [])
+               if b not in FUNDAMENTAL_BLOCKS]
+    raw["sector_neutral_blocks"] = neutral
+    return notes
+
+
+def _copy_replay_inputs(config_path: Path, workspace: Path,
+                        overrides: list[str] | None = None,
+                        no_fundamentals: bool = False) -> Config:
     config_path = config_path.resolve()
     source_root = config_path.parent
     raw_cfg = Config.load(config_path)
     destination_config = workspace / "config.yml"
     shutil.copy2(config_path, destination_config)
+
+    # Rewrite the COPY in the isolated workspace. config.yml in the repo is
+    # never touched, so a variant sweep cannot leave the live strategy
+    # altered behind it.
+    mutation_notes: list[str] = []
+    if no_fundamentals or overrides:
+        import yaml
+        with open(destination_config, encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh)
+        if no_fundamentals:
+            mutation_notes += _disable_fundamental_blocks(raw)
+        if overrides:
+            mutation_notes += ["override " + n for n in _apply_overrides(raw, overrides)]
+        with open(destination_config, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(raw, fh, sort_keys=False, allow_unicode=True)
+        for note in mutation_notes:
+            print(f"[backtest] {note}")
     for key in ("universe_csv", "fundamentals_csv", "universe_history_csv"):
         relative = Path(raw_cfg["paths"][key])
         src = source_root / relative
@@ -274,13 +374,15 @@ def _copy_replay_inputs(config_path: Path, workspace: Path) -> Config:
         shutil.copy2(src, dest)
     copied = Config.load(destination_config)
     copied.root = workspace
+    copied.mutation_notes = mutation_notes
     return copied
 
 
 def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                  start: date | str, end: date | str,
                  output_dir: str | Path, warmup_sessions: int = 320,
-                 verbose: bool = False) -> dict:
+                 verbose: bool = False, overrides: list[str] | None = None,
+                 no_fundamentals: bool = False) -> dict:
     """Replay the production daily pipeline in an isolated temporary workspace."""
     start_date, end_date = _as_date(start, "start"), _as_date(end, "end")
     if start_date > end_date:
@@ -293,12 +395,13 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
     earliest_fundamental, latest_fundamental, snapshot_count = _fundamental_coverage(
         fundamentals_path
     )
-    if start_date < earliest_fundamental:
+    if start_date < earliest_fundamental and not no_fundamentals:
         raise ValueError(
             f"Cannot start on {start_date}: the first committed point-in-time "
             f"fundamental snapshot is {earliest_fundamental}. Using current ratios "
             "for earlier dates would introduce look-ahead bias. Archive historical "
-            "fundamentals first, then rerun."
+            "fundamentals first, then rerun. (Use --no-fundamentals to replay the "
+            "price- and macro-derived blocks over a longer history instead.)"
         )
 
     if not universe_path.exists():
@@ -349,7 +452,9 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
         pipeline._log = lambda *_args, **_kwargs: None
     try:
         with tempfile.TemporaryDirectory(prefix="sp500-backtest-") as temporary:
-            cfg = _copy_replay_inputs(config_path, Path(temporary))
+            cfg = _copy_replay_inputs(config_path, Path(temporary),
+                                      overrides=overrides,
+                                      no_fundamentals=no_fundamentals)
             for index, session in enumerate(market_dates, start=1):
                 pipeline.run_daily(
                     cfg,
@@ -565,6 +670,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", default="backtest-results/latest")
     parser.add_argument("--warmup-sessions", type=int, default=320)
     parser.add_argument("--offline", action="store_true", help="use only the local price cache")
+    parser.add_argument(
+        "--no-fundamentals", action="store_true",
+        help=(
+            "Run on price- and macro-derived blocks only (momentum, risk, "
+            "technical, macro). Point-in-time fundamentals only go back to the "
+            "first committed snapshot, which caps a full backtest at a couple "
+            "of months; these blocks need neither, so this mode can replay "
+            "years. The fundamental blocks are zero-weighted and the filters "
+            "that require fundamental fields are relaxed, so no current ratio "
+            "is ever applied to a past date."
+        ),
+    )
+    parser.add_argument(
+        "--set", dest="overrides", action="append", default=[], metavar="PATH=VALUE",
+        help=(
+            "Override one config value for this run, e.g. "
+            "--set strategy.max_position_pct_equity=0.15 or --set regime.enabled=false. "
+            "Repeatable. Used to compare variants without editing config.yml."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -581,11 +706,13 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"[backtest] excluding today's incomplete session; using end date {requested_end}"
             )
-        if requested_start < earliest_fundamental:
+        if requested_start < earliest_fundamental and not args.no_fundamentals:
             raise ValueError(
                 f"Requested start {requested_start} predates the first point-in-time "
                 f"fundamental snapshot ({earliest_fundamental}). Current ratios will not "
-                "be backfilled into the past because that would cause look-ahead bias."
+                "be backfilled into the past because that would cause look-ahead bias. "
+                "Pass --no-fundamentals to replay the price- and macro-derived blocks "
+                "over a longer history instead."
             )
         if requested_end < requested_start:
             raise ValueError("End date must be on or after start date.")
@@ -606,7 +733,8 @@ def main(argv: list[str] | None = None) -> int:
         summary = run_backtest(
             config_path, prices, requested_start, requested_end,
             args.output_dir, warmup_sessions=args.warmup_sessions,
-            verbose=args.verbose,
+            verbose=args.verbose, overrides=args.overrides,
+            no_fundamentals=args.no_fundamentals,
         )
         print(json.dumps({
             "actual_period": summary["actual_period"],

@@ -1,81 +1,179 @@
 name: historical-backtest
 
+# Two modes:
+#
+# * full          — every block including fundamentals. Honest but short:
+#                   point-in-time ratios only start at the first committed
+#                   weekly snapshot, so this can only cover a few months and
+#                   proves nothing about edge yet.
+# * price-macro   — momentum, risk, technical and macro only. These need no
+#                   fundamentals, so this can replay years. Run as a variant
+#                   sweep it is the only way right now to get a statistically
+#                   meaningful read on concentration, the regime layer and
+#                   the macro block.
+
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "What to run"
+        required: true
+        type: choice
+        default: "price-macro-sweep"
+        options:
+          - price-macro-sweep
+          - full-single
       start_date:
-        description: "Start date YYYY-MM-DD; blank uses the first point-in-time fundamental snapshot"
+        description: "Start YYYY-MM-DD. Blank: 2016-01-04 for the sweep, first fundamental snapshot for full."
         required: false
         type: string
         default: ""
       end_date:
-        description: "End date YYYY-MM-DD; blank uses the latest completed US market session"
+        description: "End YYYY-MM-DD; blank uses the latest completed session"
         required: false
         type: string
         default: ""
-      offline:
-        description: "Use only a local price cache (usually leave disabled)"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 jobs:
-  backtest:
+  # ---------------------------------------------------------------------
+  # Variant sweep. Each leg changes exactly ONE thing against the baseline,
+  # so a difference in the result can be attributed to that thing.
+  # ---------------------------------------------------------------------
+  sweep:
+    if: inputs.mode == 'price-macro-sweep'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2        # these are network-heavy; don't get rate-limited
+      matrix:
+        include:
+          - name: baseline-cap25
+            args: ""
+          - name: concentration-cap50
+            args: "--set strategy.max_position_pct_equity=0.50 --set strategy.target_position_pct_equity=0.40"
+          - name: concentration-cap15
+            args: "--set strategy.max_position_pct_equity=0.15 --set strategy.target_position_pct_equity=0.12"
+          - name: concentration-cap08
+            args: "--set strategy.max_position_pct_equity=0.08 --set strategy.target_position_pct_equity=0.06"
+          - name: regime-off
+            args: "--set regime.enabled=false"
+          - name: macro-off
+            args: "--set factor_weights.macro=0.0"
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run historical backtest
+      - name: Cache price history
+        # The sweep legs all pull the same decade of prices. Sharing one
+        # cache turns six full downloads into one.
+        uses: actions/cache@v4
+        with:
+          path: state/cache/prices.csv.gz
+          key: backtest-prices-${{ inputs.start_date }}-${{ inputs.end_date }}
+          restore-keys: |
+            backtest-prices-
+            price-cache-
+
+      - name: Run ${{ matrix.name }}
         env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           BACKTEST_START: ${{ inputs.start_date }}
           BACKTEST_END: ${{ inputs.end_date }}
-          BACKTEST_OFFLINE: ${{ inputs.offline }}
         run: |
-          args=(--output-dir backtest-results/latest --verbose)
-          if [[ -n "$BACKTEST_START" ]]; then
-            args+=(--start "$BACKTEST_START")
-          fi
-          if [[ -n "$BACKTEST_END" ]]; then
-            args+=(--end "$BACKTEST_END")
-          fi
-          if [[ "$BACKTEST_OFFLINE" == "true" ]]; then
-            args+=(--offline)
-          fi
-          python scripts/backtest.py "${args[@]}"
+          args=(--no-fundamentals --output-dir "backtest-results/${{ matrix.name }}" --verbose)
+          args+=(--start "${BACKTEST_START:-2016-01-04}")
+          if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          # shellcheck disable=SC2206
+          extra=(${{ matrix.args }})
+          python scripts/backtest.py "${args[@]}" "${extra[@]}"
 
-      - name: Add summary to Actions
-        if: always() && hashFiles('backtest-results/latest/summary.json') != ''
+      - name: Summarise ${{ matrix.name }}
+        if: always() && hashFiles(format('backtest-results/{0}/summary.json', matrix.name)) != ''
         run: |
-          echo '### Historical backtest results' >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo 'See the JSON/CSV artifacts for the full report.' >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat backtest-results/latest/summary.json >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### ${{ matrix.name }}"
+            echo ''
+            echo '```json'
+            cat "backtest-results/${{ matrix.name }}/summary.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload report
-        if: always() && hashFiles('backtest-results/latest/summary.json') != ''
+      - name: Upload ${{ matrix.name }}
+        if: always() && hashFiles(format('backtest-results/{0}/summary.json', matrix.name)) != ''
         uses: actions/upload-artifact@v4
         with:
-          name: historical-backtest-${{ github.run_number }}
-          path: |
-            backtest-results/latest/summary.json
-            backtest-results/latest/equity_curve.csv
-            backtest-results/latest/trades.csv
-          if-no-files-found: warn
+          name: backtest-${{ matrix.name }}-${{ github.run_number }}
+          path: backtest-results/${{ matrix.name }}/
+          retention-days: 30
+
+  compare:
+    if: always() && inputs.mode == 'price-macro-sweep'
+    needs: sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install pandas
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          pattern: backtest-*
+      - name: Build comparison table
+        run: python scripts/compare_backtests.py all-results >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------
+  full:
+    if: inputs.mode == 'full-single'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run full backtest
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BACKTEST_START: ${{ inputs.start_date }}
+          BACKTEST_END: ${{ inputs.end_date }}
+        run: |
+          args=(--output-dir backtest-results/full --verbose)
+          if [[ -n "$BACKTEST_START" ]]; then args+=(--start "$BACKTEST_START"); fi
+          if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          python scripts/backtest.py "${args[@]}"
+      - name: Summarise
+        if: always() && hashFiles('backtest-results/full/summary.json') != ''
+        run: |
+          {
+            echo '### Full backtest (short history — machinery check, not evidence)'
+            echo ''
+            echo '```json'
+            cat backtest-results/full/summary.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always() && hashFiles('backtest-results/full/summary.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-full-${{ github.run_number }}
+          path: backtest-results/full/
           retention-days: 30
