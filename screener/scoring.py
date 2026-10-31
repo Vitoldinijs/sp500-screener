@@ -78,6 +78,39 @@ def zscore(s: pd.Series) -> pd.Series:
     return (v - mu) / sd
 
 
+def zscore_within_sector(s: pd.Series, sectors: pd.Series,
+                          min_names: int = 5) -> pd.Series:
+    """Z-score each name against its own sector instead of the whole market.
+
+    Several of the raw metrics are driven as much by which industry a company
+    is in as by the company itself. Energy and Financials structurally trade
+    on low P/E; software structurally earns 80% gross margins while grocers
+    earn 25%. Scored market-wide, the value block is really a bet on cheap
+    sectors and the quality block a bet on asset-light ones — neither says
+    anything about whether a given name is good *relative to its peers*,
+    which is the question a stock picker is actually asking.
+
+    Sectors with fewer than `min_names` scored companies fall back to the
+    market-wide z-score. A 2-3 name group produces a near-zero within-group
+    standard deviation, which would blow small differences up into extreme
+    z-scores and hand those sectors an unearned advantage in the ranking.
+    """
+    v = s.astype(float)
+    if sectors is None:
+        return zscore(v)
+    groups = sectors.reindex(v.index).fillna("Unknown").astype(str)
+
+    market = zscore(v)
+    out = pd.Series(np.nan, index=v.index, dtype=float)
+    for sector, idx in groups.groupby(groups).groups.items():
+        chunk = v.loc[idx]
+        if chunk.notna().sum() < min_names:
+            out.loc[idx] = market.loc[idx]
+        else:
+            out.loc[idx] = zscore(chunk)
+    return out.where(v.notna())
+
+
 def _num(value, default: float) -> float:
     """Coerce a config value to float.
 
@@ -180,9 +213,18 @@ def score(metrics: pd.DataFrame, cfg, weights: dict | None = None) -> pd.DataFra
         m["composite"] = np.nan
         return m
 
+    # Blocks whose raw metrics carry a strong industry signature are ranked
+    # within sector; the rest stay market-wide. Momentum is deliberately left
+    # market-wide by default: a sector trending as a whole is a real effect
+    # this strategy is meant to be able to ride, not a confound to remove.
+    neutral_blocks = set(cfg.get("sector_neutral_blocks") or [])
+    min_names = int(cfg.get("sector_neutral_min_names", 5) or 5)
+    sectors = pool["sector"] if "sector" in pool.columns else None
+
     # --- per-metric z-scores (computed on the eligible pool only) ----------
     zcols: dict[str, list[str]] = {b: [] for b in blocks}
     for block, metric_names in blocks.items():
+        neutralise = block in neutral_blocks and sectors is not None
         for name in metric_names:
             if name not in pool.columns:
                 continue
@@ -191,7 +233,13 @@ def score(metrics: pd.DataFrame, cfg, weights: dict | None = None) -> pd.DataFra
                 raw = raw.where(raw > 0)
             if raw.notna().sum() < 5:  # too sparse to rank meaningfully
                 continue
-            z = zscore(winsorize(raw, wpct)) * float(directions.get(name, 1))
+            # Winsorize market-wide first: the clip is there to stop a single
+            # bad data point from dominating, and a sector-local clip would
+            # be computed from as few as five values.
+            clipped = winsorize(raw, wpct)
+            z = (zscore_within_sector(clipped, sectors, min_names)
+                 if neutralise else zscore(clipped))
+            z = z * float(directions.get(name, 1))
             zname = f"z_{name}"
             pool[zname] = z
             zcols[block].append(zname)

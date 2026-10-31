@@ -1233,6 +1233,69 @@ def _run_all() -> int:
     return 1 if failed else 0
 
 
+def test_sector_neutral_scoring_removes_structural_sector_bias():
+    """Value must rank a name against its peers, not against the index.
+
+    Built so the answer is unambiguous: every Energy name is given a lower
+    P/E than every Tech name (the structural pattern seen in real data), but
+    the two sectors are otherwise identical and each contains the same spread
+    of relative cheapness. Market-wide, every Energy name outranks every Tech
+    name on the value block purely because of the industry it is in. Scored
+    within sector, the two sectors must come out even, and the ranking must
+    instead reflect cheapness relative to peers.
+    """
+    rows, sectors = [], []
+    for i in range(10):
+        # Energy P/E 6..15, Tech P/E 26..35 — disjoint ranges, same spread.
+        rows.append({"ticker": f"E{i}", "pe_ratio": 6.0 + i, "sector": "Energy"})
+        rows.append({"ticker": f"T{i}", "pe_ratio": 26.0 + i, "sector": "Tech"})
+    frame = pd.DataFrame(rows).set_index("ticker")
+    pe = frame["pe_ratio"]
+    sectors = frame["sector"]
+
+    market = scoring.zscore(pe) * -1          # direction: lower P/E is better
+    neutral = scoring.zscore_within_sector(pe, sectors, min_names=5) * -1
+
+    energy = [t for t in frame.index if t.startswith("E")]
+    tech = [t for t in frame.index if t.startswith("T")]
+
+    # Market-wide: the sectors are cleanly separated — the bias we're removing.
+    assert market.loc[energy].min() > market.loc[tech].max(), \
+        "fixture is wrong: market-wide scoring should separate the sectors"
+
+    # Sector-neutral: neither sector is advantaged as a group.
+    assert abs(neutral.loc[energy].mean()) < 1e-9
+    assert abs(neutral.loc[tech].mean()) < 1e-9
+    # ...and the cheapest name in each sector scores identically well.
+    assert abs(neutral.loc["E0"] - neutral.loc["T0"]) < 1e-9
+    # Within a sector, cheaper still beats dearer.
+    assert neutral.loc["E0"] > neutral.loc["E9"]
+
+
+def test_thin_sectors_fall_back_to_market_wide_scoring():
+    """A 2-name sector must not get extreme z-scores from its own spread."""
+    frame = pd.DataFrame(
+        [{"ticker": f"B{i}", "v": 10.0 + i, "sector": "Big"} for i in range(10)]
+        + [{"ticker": "S0", "v": 10.2, "sector": "Small"},
+           {"ticker": "S1", "v": 10.3, "sector": "Small"}]
+    ).set_index("ticker")
+
+    z = scoring.zscore_within_sector(frame["v"], frame["sector"], min_names=5)
+
+    # Scored inside their own 2-name group, S0 and S1 would be forced to
+    # exactly -1 and +1 — a full 2 sd apart on a 0.1 difference in the raw
+    # metric. The fallback must leave them as close as their values are.
+    in_group = scoring.zscore(frame.loc[["S0", "S1"], "v"])
+    assert abs(in_group.loc["S1"] - in_group.loc["S0"]) > 1.9, \
+        "fixture is wrong: in-group scoring should blow these apart"
+    assert abs(z.loc["S1"] - z.loc["S0"]) < 0.2, \
+        "thin sector was scored against itself instead of the market"
+
+    # The fallback is the ordinary market-wide z-score, nothing bespoke.
+    market = scoring.zscore(frame["v"])
+    assert abs(z.loc["S0"] - market.loc["S0"]) < 1e-9
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

@@ -110,6 +110,21 @@ metric_blocks:
 
 winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
+# ---- Sector-neutral scoring ------------------------------------------------
+# Blocks listed here are z-scored WITHIN each GICS sector instead of across
+# the whole market, so a name is compared to its peers rather than to the
+# index. Without this, value is largely a bet on structurally cheap sectors
+# (Energy, Financials) and quality a bet on asset-light ones (software's 80%
+# gross margin vs a grocer's 25%) — neither of which says the company is
+# better than its competitors. Momentum and technical are left market-wide on
+# purpose: a whole sector trending is a real effect worth riding, not a
+# confound. Earnings (PEAD) is a surprise vs expectations, already relative.
+sector_neutral_blocks: [value, quality, growth, risk]
+sector_neutral_min_names: 5    # sectors thinner than this fall back to
+                                # market-wide scoring; a 2-3 name group has a
+                                # near-zero spread that would otherwise turn
+                                # trivial differences into extreme z-scores
+
 # ---- Self-learning ---------------------------------------------------------
 learning:
   enabled: true                 # armed; no updates until lifecycle sample + holdout gates pass
