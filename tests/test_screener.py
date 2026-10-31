@@ -586,6 +586,76 @@ def test_missing_core_risk_data_does_not_force_existing_position_to_exit():
     assert state.positions[0].get("weak_signal_runs", 0) == 0
 
 
+def test_every_data_gap_reason_pauses_review_rather_than_forcing_an_exit():
+    """No data-availability gap may masquerade as a weakened signal.
+
+    Regression test for a real exit: COF was sold on 2026-10-23 with reason
+    "signal weakened for 3 consecutive reviews: fundamentals incomplete" —
+    the ladder had no fundamentals that week, not a deteriorating stock.
+    The exemption list in review_positions was hand-written and covered only
+    two of the five data-gap reasons scoring can emit, so this walks the
+    whole list from scoring rather than spot-checking one string.
+    """
+    for reason in scoring.DATA_GAP_REASONS:
+        cfg = _cfg()
+        state = portfolio.PortfolioState.new(10_000.0)
+        ladder = portfolio.Ladder(cfg, state)
+        bar = pd.DataFrame({"open": [100.0], "close": [100.0]}, index=["AAA"])
+        ladder.run_day(
+            bar, date(2025, 1, 2),
+            shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 0.5,
+                        "allocation_weight": 1.0, "last_close": 100.0}],
+        )
+        ladder.run_day(bar, date(2025, 1, 3))
+        assert state.positions, f"setup failed for {reason!r}"
+
+        gap = pd.DataFrame(
+            {"eligible": [False], "composite": [np.nan], "rank": [np.nan],
+             "exclude_reason": [reason]},
+            index=["AAA"],
+        )
+        # Well past exit_confirmation_observations: a gap must never age into
+        # an exit, however long the provider stays silent.
+        for i in range(8):
+            ladder.run_day(
+                bar, (pd.Timestamp("2025-01-06") + pd.Timedelta(days=i)).date(),
+                scored=gap,
+            )
+            assert state.positions, f"{reason!r} closed a holding"
+            assert not any(o["side"] == "SELL" for o in state.pending_orders), \
+                f"{reason!r} queued a sell"
+        assert state.positions[0].get("weak_signal_runs", 0) == 0, \
+            f"{reason!r} counted as a weak-signal review"
+
+
+def test_genuine_deterioration_still_exits_while_data_gaps_do_not():
+    """The fix must not turn the exit rule off for real deterioration."""
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    bar = pd.DataFrame({"open": [100.0], "close": [100.0]}, index=["AAA"])
+    ladder.run_day(bar, date(2025, 1, 2),
+                   shortlist=[{"ticker": "AAA", "sector": "Tech", "composite": 0.5,
+                               "allocation_weight": 1.0, "last_close": 100.0}])
+    ladder.run_day(bar, date(2025, 1, 3))
+
+    # "illiquid" means we DID see the volume and it was too low — a real
+    # change in the name, so the usual confirmation-and-exit path applies.
+    bad = pd.DataFrame(
+        {"eligible": [False], "composite": [np.nan], "rank": [np.nan],
+         "exclude_reason": ["illiquid"]},
+        index=["AAA"],
+    )
+    sold = False
+    for i in range(6):
+        ladder.run_day(bar, (pd.Timestamp("2025-01-06") + pd.Timedelta(days=i)).date(),
+                       scored=bad)
+        if not state.positions:
+            sold = True
+            break
+    assert sold, "a genuine eligibility failure must still close the position"
+
+
 def test_position_exits_after_signal_is_weak_for_consecutive_reviews():
     cfg = _cfg()
     state = portfolio.PortfolioState.new(10_000.0)

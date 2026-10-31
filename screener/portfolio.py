@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import scoring
 from .allocation import allocation_multiplier
 
 STATE_VERSION = 2
@@ -508,7 +509,9 @@ class Ladder:
                     review_detail = str(row.get("exclude_reason") or "screen eligibility lost")
                     # Missing required provider data blocks new entries, but
                     # must not itself force an existing position to exit.
-                    if "market cap unavailable" in review_detail or "liquidity data unavailable" in review_detail:
+                    # The authoritative list lives in scoring, beside the
+                    # checks that generate these strings.
+                    if scoring.is_data_gap_reason(review_detail):
                         p["weak_signal_runs"] = 0
                         p["last_rank_percentile"] = None
                         p["last_signal_review"] = "signal review paused: " + review_detail

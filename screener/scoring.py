@@ -21,6 +21,42 @@ import pandas as pd
 
 from .allocation import allocation_multiplier
 
+# Exclusion reasons that mean "we can't currently see this", as opposed to
+# "this name has deteriorated". The distinction matters because the same
+# eligibility check serves two different questions:
+#
+#   * Can we BUY this today?  A data gap is a no — we don't open a position
+#     in a name we can't verify.
+#   * Should we SELL what we hold?  A data gap is NOT a yes. A provider
+#     dropping a field for a few days is not a change in the investment
+#     thesis, and selling on it means paying spread + slippage to exit a
+#     perfectly good position for a bookkeeping reason. Worse, the exit is
+#     recorded as "signal weakened", which poisons the very outcome data the
+#     lifecycle learner is being fed.
+#
+# This lives here, next to the fail() calls that produce these strings, so
+# that adding a new reason forces a decision about which category it is in.
+# portfolio.review_positions imports it rather than keeping its own copy —
+# a hand-maintained duplicate there is exactly how `fundamentals incomplete`
+# ended up silently classified as a signal failure.
+DATA_GAP_REASONS = (
+    "price data unavailable",
+    "liquidity data unavailable",
+    "market cap unavailable",
+    "fundamentals incomplete",
+    "insufficient price history",
+)
+
+
+def is_data_gap_reason(reason) -> bool:
+    """True when an exclusion reason reflects missing data, not deterioration.
+
+    Substring matching, because some reasons are formatted with live config
+    values (e.g. "price < $5") and callers pass the whole rendered string.
+    """
+    text = str(reason or "")
+    return any(gap in text for gap in DATA_GAP_REASONS)
+
 # Metrics that are meaningless when non-positive (loss-making / no book value).
 POSITIVE_ONLY = {"pe_ratio", "pb_ratio", "ps_ratio", "ev_ebitda"}
 
