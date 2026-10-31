@@ -57,12 +57,23 @@ STOOQ_MAX = 60       # cap per-ticker fallback work so a run can't hang.
 # --------------------------------------------------------------------------
 # yfinance (primary)
 # --------------------------------------------------------------------------
-def _download_yfinance(tickers: list[str], start: date, end: date) -> pd.DataFrame:
+def _download_yfinance(tickers: list[str], start: date, end: date,
+                       timeout: int = 20, chunk: int | None = None,
+                       attempts: int = 2) -> pd.DataFrame:
+    """Batched download.
+
+    `timeout` and `chunk` are parameters because the two callers have very
+    different shapes. The daily job pulls ~18 months and wants to fail fast
+    rather than hang the run. A backtest pulls a decade, so each batch's
+    response is orders of magnitude larger — the daily timeout would expire
+    on every chunk and leave the replay with no prices at all.
+    """
     import yfinance as yf
 
+    size = int(chunk or CHUNK)
     frames = []
-    for i in range(0, len(tickers), CHUNK):
-        chunk = tickers[i : i + CHUNK]
+    for i in range(0, len(tickers), size):
+        batch = tickers[i : i + size]
         raw = None
         # A transient blip (CI runner rate-limited, one slow response) used
         # to drop the whole 100-ticker chunk for the day with zero retry —
@@ -71,30 +82,30 @@ def _download_yfinance(tickers: list[str], start: date, end: date) -> pd.DataFra
         # costs at most ~15s when things are fine (no retry needed) and
         # turns most one-off blips into a non-event instead of a dropped
         # chunk.
-        for attempt in range(2):
+        for attempt in range(max(1, int(attempts))):
             try:
                 raw = yf.download(
-                    chunk,
+                    batch,
                     start=start.isoformat(),
                     end=(end + timedelta(days=1)).isoformat(),
                     auto_adjust=True,
                     group_by="ticker",
                     threads=True,
                     progress=False,
-                    timeout=20,
+                    timeout=int(timeout),
                 )
                 break
             except Exception as exc:  # noqa: BLE001
                 wait = 3 * (attempt + 1)
-                print(f"[prices] yfinance chunk {i//CHUNK} attempt {attempt+1} "
-                      f"failed ({exc}); retrying in {wait}s" if attempt < 1
-                      else f"[prices] yfinance chunk {i//CHUNK} failed after "
-                           f"2 attempts ({exc}); giving up on this chunk")
-                if attempt < 1:
+                print(f"[prices] yfinance chunk {i//size} attempt {attempt+1} "
+                      f"failed ({exc}); retrying in {wait}s" if attempt < attempts - 1
+                      else f"[prices] yfinance chunk {i//size} failed after "
+                           f"{attempts} attempts ({exc}); giving up on this chunk")
+                if attempt < attempts - 1:
                     time.sleep(wait)
         if raw is None or raw.empty:
             continue
-        frames.append(_tidy_yf(raw, chunk))
+        frames.append(_tidy_yf(raw, batch))
         time.sleep(1.0)  # be polite between batches
 
     if not frames:

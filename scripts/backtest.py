@@ -94,16 +94,36 @@ def _read_price_history(cfg: Config, tickers: list[str], start: date, end: date,
             )
     else:
         try:
+            # A decade of daily bars for ~500 names is a far heavier pull
+            # than the daily job's ~18 months, so it gets a long timeout, a
+            # smaller batch (fewer huge responses) and an extra retry. The
+            # daily job keeps its fast-fail settings.
             fresh = price_mod.normalise(
-                price_mod._download_yfinance(tickers, download_start, end)
+                price_mod._download_yfinance(
+                    tickers, download_start, end,
+                    timeout=180, chunk=40, attempts=3,
+                )
             )
         except Exception as exc:  # noqa: BLE001
             fresh = pd.DataFrame(columns=price_mod.COLUMNS)
             print(f"[backtest] Yahoo download failed: {exc}")
         prices = pd.concat([cached, fresh], ignore_index=True)
         prices = price_mod.normalise(prices) if not prices.empty else prices
+        # Write the merged history back. Without this the backtest only ever
+        # READ the cache, so a shared cache between sweep legs would stay
+        # empty and every leg would re-download the same decade.
+        if not fresh.empty:
+            try:
+                price_mod.save_cache(prices, cache_path)
+                print(f"[backtest] price cache updated: {len(prices):,} rows")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[backtest] could not write price cache: {exc}")
         if prices.empty:
-            raise RuntimeError("No historical prices returned by the provider or cache.")
+            raise RuntimeError(
+                "No historical prices returned by the provider or cache. "
+                f"Requested {len(tickers)} tickers from {download_start} to {end}; "
+                "see the [prices] lines above for the per-chunk failures."
+            )
 
     prices = price_mod.normalise(prices)
     prices = prices[

@@ -39,13 +39,52 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------
+  # Download the decade of prices ONCE. Six legs pulling the same history
+  # in parallel is both wasteful and a good way to get rate-limited by
+  # Yahoo, which would fail every leg identically.
+  # ---------------------------------------------------------------------
+  prefetch:
+    if: inputs.mode == 'price-macro-sweep'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Restore any existing price cache
+        uses: actions/cache/restore@v4
+        with:
+          path: state/cache/prices.csv.gz
+          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          restore-keys: |
+            backtest-prices-
+      - name: Download price history
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python scripts/prefetch_prices.py \
+            --start "${{ inputs.start_date || '2016-01-04' }}" \
+            ${{ inputs.end_date && format('--end {0}', inputs.end_date) || '' }}
+      - name: Save price cache
+        uses: actions/cache/save@v4
+        with:
+          path: state/cache/prices.csv.gz
+          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+
+  # ---------------------------------------------------------------------
   # Variant sweep. Each leg changes exactly ONE thing against the baseline,
   # so a difference in the result can be attributed to that thing.
   # ---------------------------------------------------------------------
   sweep:
     if: inputs.mode == 'price-macro-sweep'
+    needs: prefetch
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       max-parallel: 2        # these are network-heavy; don't get rate-limited
@@ -74,16 +113,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Cache price history
-        # The sweep legs all pull the same decade of prices. Sharing one
-        # cache turns six full downloads into one.
-        uses: actions/cache@v4
+      - name: Restore the shared price cache
+        # Populated once by the prefetch job above, so each leg starts with
+        # the full history already on disk.
+        uses: actions/cache/restore@v4
         with:
           path: state/cache/prices.csv.gz
-          key: backtest-prices-${{ inputs.start_date }}-${{ inputs.end_date }}
+          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
           restore-keys: |
             backtest-prices-
-            price-cache-
 
       - name: Run ${{ matrix.name }}
         env:
@@ -118,7 +156,7 @@ jobs:
           retention-days: 30
 
   compare:
-    if: always() && inputs.mode == 'price-macro-sweep'
+    if: always() && inputs.mode == 'price-macro-sweep' && needs.sweep.result != 'skipped'
     needs: sweep
     runs-on: ubuntu-latest
     steps:
