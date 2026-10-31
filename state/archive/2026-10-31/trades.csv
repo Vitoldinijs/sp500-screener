@@ -1,0 +1,4 @@
+trade_id,ticker,name,sector,entry_date,entry_price,exit_date,exit_price,shares,cost_basis,proceeds,pnl,return_pct,bars_held,entry_score,exit_reason,av_verdict,signal_date,signal_id
+1,DELL,Dell Technologies,Information Technology,2026-08-25,443.1115,2026-10-08,568.5156,1.074651,476.19,610.96,134.77,0.283009,22,2.9276230672106545,hold period elapsed,confirmed,,
+2,MU,Micron Technology,Information Technology,2026-08-26,926.2029,2026-10-09,1053.643,0.514596,476.62,542.2,65.58,0.137595,22,1.809956883354321,hold period elapsed,confirmed,,
+22,COF,Capital One,Financials,2026-10-09,198.7093,2026-10-26,202.7286,2.49475,495.73,505.76,10.03,0.020227,9,0.44620741399904584,signal weakened for 3 consecutive reviews: fundamentals incomplete,confirmed,,
