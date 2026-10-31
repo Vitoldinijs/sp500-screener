@@ -9,6 +9,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- TradingView's own charting library (Lightweight Charts, Apache-2.0, ~45KB).
+     Pinned to an exact version so a future major release can't silently change
+     the API out from under this page. If it fails to load for any reason, the
+     chart code falls back to the hand-built SVG renderer further down. -->
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   :root {
     --bg: #0d1114;
@@ -128,6 +133,14 @@
   .chart-period.active { color: var(--ink); background: var(--panel-2); }
   .chart-range { color: var(--muted); font: 0.75rem var(--mono); }
   .tv-chart { position: relative; min-height: 310px; }
+  .tv-readout {
+    position: absolute; top: 10px; left: 12px; z-index: 3;
+    display: flex; flex-direction: column; gap: 0.15rem;
+    font: 0.72rem/1.45 var(--mono); pointer-events: none;
+  }
+  .tv-readout .d { color: var(--muted); }
+  .tv-readout .p { color: var(--accent); }
+  .tv-readout .b { color: #68727d; }
   svg.chart { display: block; width: 100%; height: 310px; }
   .chart-tooltip {
     position: absolute;
@@ -348,6 +361,7 @@ function renderEquitySection(d) {
   const periodDefs = [
     { id: '1W', label: '1W', days: 7 },
     { id: '1M', label: '1M', days: 31 },
+    { id: '3M', label: '3M', days: 93 },
     { id: 'ALL', label: 'All', days: null },
   ];
   const lastDate = new Date(rows[rows.length - 1].date + 'T00:00:00Z');
@@ -391,18 +405,133 @@ function renderEquitySection(d) {
         : (r.benchmark_equity / baseBenchmark - 1) * 100;
     });
 
-    chartBox.innerHTML = '';
-    chartBox.appendChild(interactiveEquityChart(
-      portfolioValues,
-      benchmarkValues,
-      visible.map(function(r) { return r.date; }),
-      800,
-      310
-    ));
+    const labels = visible.map(function(r) { return r.date; });
+
+    // The chart library measures its container, so it can only be built once
+    // the section is actually in the document. On the very first render this
+    // function runs while `sec` is still detached, hence the rAF defer; on a
+    // period click the element is already live and rAF just costs one frame.
+    requestAnimationFrame(function() {
+      chartBox.innerHTML = '';
+      if (!tvChart(chartBox, labels, portfolioValues, benchmarkValues)) {
+        chartBox.appendChild(interactiveEquityChart(
+          portfolioValues, benchmarkValues, labels, 800, 310
+        ));
+      }
+    });
   }
 
   render('ALL');
   return sec;
+}
+
+/* ---- TradingView Lightweight Charts renderer ----------------------------
+   Returns true if it drew; false if the library isn't available, in which
+   case the caller falls back to the hand-built SVG chart below. Both series
+   are plotted as percent change from the first bar of the visible window, so
+   the portfolio and SPY are directly comparable regardless of their dollar
+   levels. */
+function tvChart(host, labels, portfolio, benchmark) {
+  const LWC = window.LightweightCharts;
+  if (!LWC || typeof LWC.createChart !== 'function') return false;
+
+  const css = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
+  const ink = v('--ink', '#e8e6e0');
+  const muted = v('--muted', '#838b93');
+  const gold = v('--accent', '#d4a24c');
+  const grid = 'rgba(232, 230, 224, 0.06)';
+  const grey = '#68727d';
+
+  let chart;
+  try {
+    chart = LWC.createChart(host, {
+      width: host.clientWidth || 800,
+      height: 310,
+      layout: {
+        background: { type: 'solid', color: 'transparent' },
+        textColor: muted,
+        fontFamily: 'IBM Plex Mono, ui-monospace, monospace',
+        fontSize: 11,
+      },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.12, bottom: 0.12 } },
+      timeScale: { borderColor: grid, fixLeftEdge: true, fixRightEdge: true },
+      crosshair: {
+        mode: LWC.CrosshairMode ? LWC.CrosshairMode.Magnet : 1,
+        vertLine: { color: muted, width: 1, style: 3, labelBackgroundColor: '#171d22' },
+        horzLine: { color: muted, width: 1, style: 3, labelBackgroundColor: '#171d22' },
+      },
+      handleScale: false,      // the period buttons are the zoom control here;
+      handleScroll: false,     // free panning would just desync the range label
+      localization: {
+        priceFormatter: (p) => (p >= 0 ? '+' : '') + p.toFixed(2) + '%',
+      },
+    });
+  } catch (err) {
+    return false;
+  }
+
+  const toSeries = (values) => {
+    const out = [];
+    for (let i = 0; i < labels.length; i++) {
+      if (values[i] == null || !isFinite(values[i])) continue;
+      out.push({ time: labels[i], value: values[i] });
+    }
+    return out;
+  };
+
+  const spyData = toSeries(benchmark);
+  let spySeries = null;
+  if (spyData.length > 1) {
+    spySeries = chart.addLineSeries({
+      color: grey, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+    });
+    spySeries.setData(spyData);
+  }
+
+  const portSeries = chart.addAreaSeries({
+    lineColor: gold,
+    lineWidth: 2,
+    topColor: 'rgba(212, 162, 76, 0.22)',
+    bottomColor: 'rgba(212, 162, 76, 0.01)',
+    priceLineVisible: false,
+    lastValueVisible: true,
+  });
+  portSeries.setData(toSeries(portfolio));
+  chart.timeScale().fitContent();
+
+  // Floating readout, TradingView-style: sits over the top-left of the plot
+  // and tracks the crosshair, showing the last bar when the pointer is away.
+  const readout = el('div', { class: 'tv-readout' });
+  host.appendChild(readout);
+  const pct = (x) => (x == null ? '—' : (x >= 0 ? '+' : '') + x.toFixed(2) + '%');
+  const paint = (date, p, b) => {
+    readout.innerHTML =
+      '<span class="d">' + (date ? fmtDate(date) : '') + '</span>' +
+      '<span class="p">Portfolio ' + pct(p) + '</span>' +
+      '<span class="b">SPY ' + pct(b) + '</span>';
+  };
+  const lastIdx = portfolio.length - 1;
+  paint(labels[lastIdx], portfolio[lastIdx], benchmark[lastIdx]);
+
+  chart.subscribeCrosshairMove(function(param) {
+    if (!param || !param.time || !param.seriesData) {
+      paint(labels[lastIdx], portfolio[lastIdx], benchmark[lastIdx]);
+      return;
+    }
+    const p = param.seriesData.get(portSeries);
+    const b = spySeries ? param.seriesData.get(spySeries) : null;
+    paint(param.time, p ? p.value : null, b ? b.value : null);
+  });
+
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(function() {
+      if (host.clientWidth) chart.applyOptions({ width: host.clientWidth });
+    });
+    ro.observe(host);
+  }
+  return true;
 }
 
 function interactiveEquityChart(portfolio, benchmark, dates, width, height) {
@@ -672,41 +801,6 @@ function renderSectors(d) {
     row.appendChild(el('div', { class: 'count', text: cap ? `${count} / ${cap}` : String(count) }));
     sec.appendChild(row);
   });
-  return sec;
-}
-
-function renderCandidates(d) {
-  const rows = d.top_candidates || [];
-  const sec = el('section');
-  sec.appendChild(el('h2', { text: "Today's screen" }));
-  sec.appendChild(el('div', {
-    class: 'sub',
-    text: `Top ${rows.length} by composite score, as of ${fmtDate(d.meta ? d.meta.data_date : null)}.`
-  }));
-  if (!rows.length) {
-    sec.classList.add('empty');
-    sec.appendChild(el('p', { text: 'No screen has run yet.' }));
-    return sec;
-  }
-  const blockCols = Object.keys(rows[0]).filter(k => k.startsWith('block_'));
-  const table = el('table');
-  table.appendChild(el('thead', {}, el('tr', {}, [
-    el('th', { text: '#' }), el('th', { text: 'ticker' }), el('th', { text: 'sector' }),
-    el('th', { class: 'num', text: 'composite' }),
-    ...blockCols.map(c => el('th', { class: 'num', text: c.replace('block_', '') })),
-  ])));
-  const tbody = el('tbody');
-  rows.forEach(row => {
-    tbody.appendChild(el('tr', {}, [
-      el('td', { text: row.rank != null ? String(Math.round(row.rank)) : '—' }),
-      el('td', {}, el('span', { class: 'ticker-badge', text: row.ticker })),
-      el('td', { class: 'name-cell', text: row.sector || '—' }),
-      el('td', { class: 'num', text: fmtNum(row.composite, 2) }),
-      ...blockCols.map(c => el('td', { class: 'num', text: fmtNum(row[c], 2) })),
-    ]));
-  });
-  table.appendChild(tbody);
-  sec.appendChild(el('div', { class: 'tbl-scroll' }, table));
   return sec;
 }
 
