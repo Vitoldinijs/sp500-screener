@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring, universe  # noqa: E402
 from screener.data import macro as macro_mod  # noqa: E402
 from screener import regime as regime_mod  # noqa: E402
+from screener import macro_factors as macro_fac  # noqa: E402
 from screener.config import Config  # noqa: E402
 from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
@@ -879,8 +880,8 @@ def test_historical_backtest_refuses_fundamentals_lookahead():
 def test_proposed_weights_respect_bounds_and_sum_to_one():
     cfg = _cfg()
     L = cfg.learning
-    current = {"value": 0.18, "quality": 0.16, "growth": 0.10, "momentum": 0.30,
-               "earnings": 0.12, "risk": 0.06, "technical": 0.08}
+    current = {"value": 0.16, "quality": 0.14, "growth": 0.09, "momentum": 0.28,
+               "earnings": 0.11, "risk": 0.06, "technical": 0.08, "macro": 0.08}
 
     for ic in [
         {"value": 0.9, "quality": 0.0, "growth": 0.0, "momentum": 0.0,
@@ -1474,6 +1475,97 @@ def test_exposure_scales_how_much_capital_is_deployed():
     # Never more than the ceiling allows, at any setting.
     for exposure, total in deployed.items():
         assert total <= 10_000.0 * exposure + 1.0
+
+
+def _oil_world(final_drift: float, seed: int = 42):
+    """Prices with a KNOWN oil beta per name, so betas can be checked."""
+    rng = np.random.default_rng(seed)
+    n = 900
+    dates = pd.bdate_range("2023-01-02", periods=n)
+
+    oil = [60.0]
+    for i in range(1, n):
+        drift = final_drift if i > n - 65 else 0.0
+        oil.append(oil[-1] * np.exp(drift + rng.normal(0, 0.015)))
+    oil = np.array(oil)
+    oil_ret = np.diff(np.log(oil), prepend=0.0)
+
+    true_betas = {"OIL1": 1.4, "OIL2": 1.1, "TECH1": -0.6, "NEUT1": 0.0}
+    cols = {}
+    for name, beta in true_betas.items():
+        r = beta * oil_ret + rng.normal(0, 0.012, n)
+        cols[name] = 100.0 * np.exp(np.cumsum(r))
+    close = pd.DataFrame(cols, index=dates)
+
+    frame = macro_mod.normalise(pd.DataFrame(
+        [{"date": d, "series_id": "DCOILWTICO", "value": v}
+         for d, v in zip(dates, oil)]
+    ))
+    return close, frame, dates[-1].date(), true_betas
+
+
+def test_macro_betas_recover_a_known_sensitivity():
+    cfg = _cfg()
+    close, frame, asof, true_betas = _oil_world(final_drift=0.004)
+    out = macro_fac.macro_tilt(close, frame, asof, cfg)
+    assert not out.empty and "beta_oil_wti" in out.columns
+
+    for ticker, truth in true_betas.items():
+        got = float(out.loc[ticker, "beta_oil_wti"])
+        assert abs(got - truth) < 0.35, f"{ticker}: beta {got:.2f} vs true {truth}"
+
+
+def test_macro_tilt_follows_the_direction_of_the_driver():
+    """The same stock must be favoured or penalised with the oil trend.
+
+    This is the property that makes sector tilts emerge without a separate
+    sector mechanism: when crude rises, oil-sensitive names rank above
+    oil-averse ones, and when it falls the ordering inverts.
+    """
+    cfg = _cfg()
+
+    rising, frame_up, asof_up, _ = _oil_world(final_drift=0.004)
+    up = macro_fac.macro_tilt(rising, frame_up, asof_up, cfg)
+    assert up.loc["OIL1", "macro_tilt"] > up.loc["NEUT1", "macro_tilt"]
+    assert up.loc["NEUT1", "macro_tilt"] > up.loc["TECH1", "macro_tilt"]
+
+    falling, frame_dn, asof_dn, _ = _oil_world(final_drift=-0.004)
+    down = macro_fac.macro_tilt(falling, frame_dn, asof_dn, cfg)
+    assert down.loc["OIL1", "macro_tilt"] < down.loc["NEUT1", "macro_tilt"], \
+        "a falling driver must penalise the names most exposed to it"
+    assert down.loc["TECH1", "macro_tilt"] > down.loc["NEUT1", "macro_tilt"]
+
+
+def test_macro_tilt_is_absent_not_fatal_when_macro_data_is_missing():
+    cfg = _cfg()
+    close, _, asof, _ = _oil_world(final_drift=0.004)
+    empty = macro_mod.normalise(pd.DataFrame(columns=["date", "series_id", "value"]))
+    assert macro_fac.macro_tilt(close, empty, asof, cfg).empty
+
+
+def test_macro_block_renormalises_out_of_the_composite_when_absent():
+    """A name with no macro_tilt must still be scored on the other blocks."""
+    cfg = _cfg()
+    uni, px, fund = _fixture(n=40, days=420)
+    metrics = factors.build_metrics(px, fund, uni)
+    scored = scoring.score(metrics, cfg)
+    eligible = scored[scored["eligible"]]
+    assert not eligible.empty
+    assert eligible["composite"].notna().all(), \
+        "composite went NaN when the macro block had no data"
+    assert "block_macro" in scored.columns
+    assert scored["block_macro"].isna().all(), "fixture has no macro data"
+
+
+def test_macro_driver_trend_is_capped():
+    """One violent quarter in a driver cannot dominate the composite."""
+    # A strong, persistent run with real (small) variation — sigma must be
+    # non-zero or the guard against a degenerate series fires instead.
+    rng = np.random.default_rng(3)
+    extreme = pd.DataFrame({"oil_wti": 0.5 + rng.normal(0, 0.01, 60)})
+    trends = macro_fac.driver_trends(extreme, lookback_weeks=13)
+    assert trends, "a constant-direction driver should still produce a trend"
+    assert abs(trends["oil_wti"]) <= macro_fac.TREND_CLIP + 1e-9
 
 
 if __name__ == "__main__":

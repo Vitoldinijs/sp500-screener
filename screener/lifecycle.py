@@ -24,7 +24,8 @@ SIGNAL_FEATURE_FIELDS = (
     "is_chosen_candidate", "shortlisted", "portfolio_action", "action_reason",
     "price_provider", "fundamentals_asof",
 ) + tuple(f"block_{name}" for name in (
-    "value", "quality", "growth", "momentum", "earnings", "risk", "technical"
+    "value", "quality", "growth", "momentum", "earnings", "risk", "technical",
+    "macro",
 ))
 OUTCOME_FIELDS = TRADE_FIELDS + (
     "closed_outcome", "feature_link_status", "learning_eligible",

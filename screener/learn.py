@@ -33,7 +33,8 @@ import pandas as pd
 # back into config.yml's `factor_weights` (see Config.save_weights, which
 # REPLACES the whole block). A block present in metric_blocks but missing
 # here would silently vanish from config.yml the first time learning runs.
-BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk", "technical")
+BLOCKS = ("value", "quality", "growth", "momentum", "earnings", "risk",
+          "technical", "macro")
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from . import benchmark as bmod
+from . import macro_factors as macro_fac
 from . import regime as regime_mod
 from .data import macro as macro_mod
 from . import excel_report, evaluation, factors, learn, lifecycle, portfolio, scoring, universe
@@ -136,9 +137,29 @@ def run_daily(cfg: Config, allow_network: bool = True,
     if already_ran:
         _log(f"state already processed {state.last_run_date}; rebuilding report only")
 
+    # --- macro ------------------------------------------------------------
+    # Fetched once and used twice: per-stock sensitivities feed the scoring
+    # table, and the same frame drives the regime layer below. Best-effort —
+    # a FRED outage leaves the cached series in place, and with nothing at
+    # all both consumers degrade rather than failing the run.
+    asof_date = data_date.date() if hasattr(data_date, "date") else data_date
+    macro_frame = macro_mod.get_macro(
+        cfg.path("macro_csv"), macro_mod.default_start(asof_date), asof_date,
+        allow_network=allow_network,
+    )
+
     # --- score ------------------------------------------------------------
     metrics = factors.build_metrics(prices_long, fund, uni, asof=data_date)
     metrics = metrics.drop(index=[bench], errors="ignore")
+
+    tilt = macro_fac.macro_tilt(close_wide.drop(columns=[bench], errors="ignore"),
+                                macro_frame, asof_date, cfg)
+    if tilt.empty:
+        _log("macro sensitivities unavailable; composite renormalises without them")
+    else:
+        metrics = metrics.join(tilt, how="left")
+        _log(f"macro tilt for {int(tilt['macro_tilt'].notna().sum())} names")
+
     scored = scoring.score(metrics, cfg)
     eligible_n = int(scored["eligible"].sum()) if "eligible" in scored else 0
     _log(f"scored {len(scored)} names, {eligible_n} passed the filters")
@@ -176,21 +197,10 @@ def run_daily(cfg: Config, allow_network: bool = True,
         chosen["av_reason"] = "verification disabled or offline"
 
     # --- market regime: how much may be invested at all --------------------
-    # Read before trading so the day's entry respects it. Macro refresh is
-    # best-effort: a FRED outage leaves the cached series in place, and with
-    # nothing at all the assessment returns full exposure rather than
-    # quietly de-risking.
-    macro_frame = macro_mod.get_macro(
-        cfg.path("macro_csv"),
-        macro_mod.default_start(data_date.date() if hasattr(data_date, "date") else data_date),
-        data_date.date() if hasattr(data_date, "date") else data_date,
-        allow_network=allow_network,
-    )
+    # Assessed before trading so today's entry respects it. Reuses the macro
+    # frame fetched above rather than hitting FRED a second time.
     bench_close = close_wide[bench] if bench in close_wide.columns else None
-    assessment = regime_mod.assess(
-        cfg, bench_close, macro_frame,
-        data_date.date() if hasattr(data_date, "date") else data_date,
-    )
+    assessment = regime_mod.assess(cfg, bench_close, macro_frame, asof_date)
     _log(f"regime: exposure {assessment.exposure:.0%} (score {assessment.score:.2f})"
          + (f" — {'; '.join(assessment.notes)}" if assessment.notes else ""))
 

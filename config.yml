@@ -73,13 +73,14 @@ filters:
 #                 signal layered ON TOP OF the trend call, not another vote
 #                 for the trend itself — see the comment on rsi14 below.
 factor_weights:
-  value: 0.18
-  quality: 0.16
-  growth: 0.10
-  momentum: 0.30
-  earnings: 0.12
+  value: 0.16
+  quality: 0.14
+  growth: 0.09
+  momentum: 0.28
+  earnings: 0.11
   risk: 0.06
   technical: 0.08
+  macro: 0.08
 
 # Per-metric direction: +1 means higher raw value is better, -1 means lower.
 metric_direction:
@@ -110,6 +111,10 @@ metric_direction:
   earnings_surprise_pct: 1   # gated to the last ~quarter, see factors.py
   # risk
   volatility: -1          # lower realised vol scores better (low-vol anomaly)
+  # macro — see screener/macro_factors.py. The scored value is already a
+  # signed expected-return contribution (beta x driver trend), so higher is
+  # simply better and no direction flip is needed.
+  macro_tilt: 1
   # technical (short-term entry timing — deliberately kept OUT of the
   # momentum block: this is a contrarian/mean-reversion pair, not a
   # trend-following one, and averaging it in with mom_12m_1m etc. would
@@ -125,6 +130,7 @@ metric_blocks:
   earnings: [earnings_surprise_pct]
   risk: [volatility]
   technical: [rsi14, macd_hist]
+  macro: [macro_tilt]
 
 winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
@@ -137,6 +143,10 @@ winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 # better than its competitors. Momentum and technical are left market-wide on
 # purpose: a whole sector trending is a real effect worth riding, not a
 # confound. Earnings (PEAD) is a surprise vs expectations, already relative.
+# NOTE: `macro` is deliberately absent from this list. Producing sector
+# tilts is exactly what that block is for — oil trending up should lift
+# oil-sensitive names and with them the Energy sector. Neutralising it
+# would cancel the effect it exists to create.
 sector_neutral_blocks: [value, quality, growth, risk]
 sector_neutral_min_names: 5    # sectors thinner than this fall back to
                                 # market-wide scoring; a 2-3 name group has a
@@ -160,6 +170,16 @@ learning:
   min_factor_observations: 8    # minimum pairs before trusting a block correlation
   min_validation_ic_improvement: 0.01 # held-out Spearman IC must improve by at least 0.01
   rollback_if_worse: true       # reject proposals that fail the held-out check
+
+# ---- Macro sensitivities ---------------------------------------------------
+# Betas of each stock's weekly returns to weekly changes in the macro
+# drivers, scored against where those drivers are currently heading. A macro
+# LEVEL is identical for every company and would score zero for all of them;
+# a SENSITIVITY differs company by company, including within a sector.
+macro_factors:
+  window_weeks: 104             # ~2 years of weekly observations for the fit
+  min_observations: 60          # below this a name gets no beta rather than a bad one
+  trend_lookback_weeks: 13      # ~1 quarter of driver direction
 
 # ---- Market regime: how much to be invested at all -------------------------
 # The composite score is cross-sectional and cannot answer "is now a bad time
