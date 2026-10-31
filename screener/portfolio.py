@@ -2,7 +2,9 @@
 
 Mechanics
 ---------
-* ``n_slots`` is a maximum concurrent-position limit, not a holding target.
+* Position count is emergent: names are sized by conviction and bounded by
+  the per-name and per-sector caps, the cash reserve and a minimum notional.
+  ``max_concurrent_positions`` is only a rail against a book full of dust.
   Positions are re-scored daily and exit only when signal/data-risk rules fire.
 * **Next-open execution.** A signal computed from day T's close becomes a
   *pending order* filled at day T+1's open. Nothing is ever transacted at a
@@ -108,9 +110,9 @@ class PortfolioState:
     def equity(self) -> float:
         return float(self.cash + self.positions_value())
 
-    def open_slots(self, n_slots: int) -> int:
+    def open_slots(self, max_positions: int) -> int:
         used = len(self.positions) + sum(1 for o in self.pending_orders if o["side"] == "BUY")
-        return max(0, n_slots - used)
+        return max(0, max_positions - used)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +123,22 @@ class Ladder:
         self.cfg = cfg
         self.s = state
         st = cfg.strategy
-        self.n_slots = int(st["n_slots"])
+        # No slot target any more: `max_concurrent_positions` is a rail that
+        # stops the book filling with dust, not a number to aim for. The real
+        # constraints on how many names we end up holding are the per-name
+        # ceiling, the cash reserve, and min_position_notional.
+        self.max_positions = int(st.get("max_concurrent_positions", 25))
+        self.target_position_pct = float(st.get("target_position_pct_equity", 0.20))
+        # Conviction is scaled against a FIXED reference — the multiplier a
+        # median-ranked name would get — rather than against the average of
+        # whatever is currently held. Normalising by the book average makes
+        # sizing circular: the first pick into an empty book is its own
+        # average, so a maximum-conviction name and a marginal one both come
+        # out at exactly the base size. Against a fixed reference, a top pick
+        # is sized up until the per-name cap stops it, which is the whole
+        # point of letting conviction drive the book.
+        self.neutral_weight = max(1e-9, allocation_multiplier(0.5, st))
+        self.min_position_notional = float(st.get("min_position_notional", 0.0))
         self.exit_rank_floor = float(st.get("exit_rank_percentile_below", 0.35))
         self.exit_confirmation = max(1, int(st.get("exit_confirmation_observations", 3)))
         self.slip = float(st.get("slippage_bps", 0.0)) / 10_000.0
@@ -428,8 +445,13 @@ class Ladder:
             old_cost_basis = float(pos.get("cost_basis", 0.0))
             pos["shares"] = round(old_shares + shares_to_buy, 6)
             pos["cost_basis"] = round(old_cost_basis + cost, 2)
-            pos["cumulative_cost_basis"] = (
-                float(pos.get("cumulative_cost_basis", old_cost_basis)) + cost
+            # Rounded to the same precision as cost_basis above. Left
+            # unrounded, the two drift apart in the last decimal and
+            # cumulative — which is meant to be the running total of every
+            # purchase — can read as fractionally LESS than the current cost
+            # basis it is supposed to bound.
+            pos["cumulative_cost_basis"] = round(
+                float(pos.get("cumulative_cost_basis", old_cost_basis)) + cost, 2
             )
             pos["total_shares_bought"] = (
                 float(pos.get("total_shares_bought", old_shares)) + shares_to_buy
@@ -629,9 +651,14 @@ class Ladder:
         )
         if candidate_weight is not None:
             weights.append(max(0.1, float(candidate_weight)))
-        remaining_slots = max(0, self.n_slots - len(weights))
-        weights.extend([1.0] * remaining_slots)
-        return max(sum(weights) / max(1, self.n_slots), 1e-9)
+        # Previously this padded the list out to n_slots with weight 1.0, so
+        # the divisor was always the slot count. With no slot target there is
+        # nothing to pad to: the average is taken over the names actually in
+        # (or entering) the book. An empty book averages to 1.0 so the first
+        # buy is sized at exactly the base target.
+        if not weights:
+            return 1.0
+        return max(sum(weights) / len(weights), 1e-9)
 
     # -- step 4: queue the entry ------------------------------------------
     def schedule_entry(
@@ -639,7 +666,7 @@ class Ladder:
         signal_date: date | None = None, scored: pd.DataFrame | None = None,
     ) -> dict | None:
         """Queue one rank-weighted BUY if a portfolio slot is free."""
-        if self.s.drawdown_paused or self.s.open_slots(self.n_slots) <= 0 or not shortlist:
+        if self.s.drawdown_paused or self.s.open_slots(self.max_positions) <= 0 or not shortlist:
             return None
 
         pick = shortlist[0]
@@ -649,11 +676,10 @@ class Ladder:
             weight = 1.0
         if not np.isfinite(weight) or weight <= 0:
             weight = 1.0
-        average_weight = self._average_slot_weight(scored, candidate_weight=weight)
-        base_slot_value = self.s.equity() * (1.0 - self._cash_reserve_pct()) / self.n_slots
-        target = base_slot_value * weight / average_weight
         equity = self.s.equity()
-        max_position = self._exposure_cap_value("max_position_pct_equity", 0.15)
+        base_slot_value = equity * self.target_position_pct
+        target = base_slot_value * weight / self.neutral_weight
+        max_position = self._exposure_cap_value("max_position_pct_equity", 0.25)
         sector_cap = self._exposure_cap_value("max_sector_pct_equity", 0.25)
         sector = str(pick.get("sector", "Unknown"))
         sector_value = sum(
@@ -666,8 +692,16 @@ class Ladder:
             if o.get("side") == "BUY" and str(o.get("sector", "Unknown")) == sector
         )
         sector_room = max(0.0, sector_cap - sector_value)
-        budget = min(target, max_position, sector_room, self.s.available_cash)
-        if budget < 25.0:                    # not worth a position
+        # The cash buffer used to be enforced implicitly, by dividing only
+        # (1 - reserve) of equity across n_slots. With the slot divisor gone
+        # it has to be an explicit constraint, or buying would run the book
+        # down to zero cash.
+        deployable = max(0.0, self.s.available_cash - equity * self._cash_reserve_pct())
+        budget = min(target, max_position, sector_room, deployable)
+        # A position too small to matter is churn: it pays spread on the way
+        # in and out and can never move the portfolio. This floor, not a slot
+        # count, is what stops the book filling with dust.
+        if budget < max(25.0, self.min_position_notional):
             return None
 
         order = {
@@ -704,8 +738,8 @@ class Ladder:
         equity = self.s.equity()
         max_position = self._exposure_cap_value("max_position_pct_equity", 0.08)
         max_sector = self._exposure_cap_value("max_sector_pct_equity", 0.25)
-        base_slot_value = equity * (1.0 - self._cash_reserve_pct()) / self.n_slots
-        average_weight = self._average_slot_weight(scored)
+        base_slot_value = equity * self.target_position_pct
+        average_weight = self.neutral_weight
         eligible_count = self._eligible_count(scored)
 
         pending_rebalances = {
@@ -738,12 +772,12 @@ class Ladder:
 
             row = scored.loc[position["ticker"]] if position.get("ticker") in scored.index else None
             screen_reason = str(row.get("exclude_reason") or "") if row is not None else "screen data unavailable"
+            # Same shared list as review_positions: a name we can't currently
+            # see is held at its present size rather than resized on stale or
+            # partial inputs. (This was a second hand-maintained copy of the
+            # reason strings, and had drifted the same way the exit path had.)
             core_data_missing = (
-                "market cap unavailable" in screen_reason
-                or "liquidity data unavailable" in screen_reason
-                or "price data unavailable" in screen_reason
-                or "insufficient price history" in screen_reason
-                or row is None
+                row is None or scoring.is_data_gap_reason(screen_reason)
             )
             if int(position.get("weak_signal_runs", 0)) > 0 or core_data_missing:
                 targets[tid] = current_value

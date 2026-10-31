@@ -12,7 +12,7 @@ What it proves
 --------------
 * the daily job survives 300 consecutive runs, each one resuming from the
   state file the previous run wrote (that is how Actions actually behaves);
-* the portfolio respects ``n_slots`` while positions remain open until signal-based exits;
+* position count is emergent; holdings stay open until signal-based exits;
 * cash never goes negative, no ticker is ever held twice, the sector cap holds;
 * the accounting identity ``equity == capital + realised + unrealised`` holds
   to the cent, every day;
@@ -95,7 +95,7 @@ def publish_fundamentals(cfg: Config, universe: pd.DataFrame,
 def check_invariants(cfg: Config, state, trades: pd.DataFrame, day: str) -> None:
     """Raise AssertionError on the first violated invariant."""
     strat = cfg.strategy
-    n_slots = int(strat["n_slots"])
+    max_positions = int(strat.get("max_concurrent_positions", 25))
     cap = int(strat["max_positions_per_sector"])
 
     def bad(msg: str):
@@ -108,9 +108,23 @@ def check_invariants(cfg: Config, state, trades: pd.DataFrame, day: str) -> None
     if not np.isfinite(eq) or eq <= 0:
         bad(f"equity is not a positive finite number: {eq}")
 
-    # --- slot discipline -------------------------------------------------
-    if len(state.positions) > n_slots:
-        bad(f"{len(state.positions)} positions exceeds n_slots={n_slots}")
+    # --- position discipline ---------------------------------------------
+    if len(state.positions) > max_positions:
+        bad(f"{len(state.positions)} positions exceeds "
+            f"max_concurrent_positions={max_positions}")
+    # No position may breach the per-name ceiling. This is the constraint
+    # that now sets the minimum number of holdings, so it has to hold on
+    # every single day, not just at entry.
+    eq_now = state.equity()
+    pos_cap = float(strat.get("max_position_pct_equity", 1.0))
+    if eq_now > 0 and pos_cap > 0:
+        for p in state.positions:
+            share = float(p.get("last_value", p.get("cost_basis", 0.0))) / eq_now
+            # Entry respects the cap; drift afterwards is the market moving a
+            # winner, which rebalancing trims rather than blocks. Flag only a
+            # breach far beyond what drift between rebalances can explain.
+            if share > pos_cap * 1.75:
+                bad(f"{p['ticker']} is {share:.1%} of equity, cap is {pos_cap:.0%}")
     tickers = [p["ticker"] for p in state.positions]
     if len(tickers) != len(set(tickers)):
         dupes = {t for t in tickers if tickers.count(t) > 1}
@@ -296,7 +310,7 @@ def simulate(days: int, seed: int, keep: Path | None, verbose: bool,
     print(f"  win rate            {stats['win_rate']:.1%}")
     print(f"  avg hold (bars)     {stats['avg_hold']:.1f}")
     print(f"  open positions      {len(state.positions)} (peak {peak_positions}"
-          f" / {cfg.strategy['n_slots']} slots)")
+          f", cap {cfg.strategy.get('max_concurrent_positions', 25)})")
     print(f"  learning runs       {len(learning_runs)}"
           f"  {[r['decision'] for r in learning_runs]}")
     print(f"  wall clock          {time.time() - t0:,.1f}s")

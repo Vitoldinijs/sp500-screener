@@ -148,7 +148,8 @@ def build_payload(cfg: Config) -> dict:
         "strategy": {
             "name": strat.get("name"),
             "start_capital": strat.get("start_capital"),
-            "n_slots": strat.get("n_slots"),
+            "max_concurrent_positions": strat.get("max_concurrent_positions"),
+            "target_position_pct_equity": strat.get("target_position_pct_equity"),
             "max_positions_per_sector": strat.get("max_positions_per_sector"),
             "max_position_pct_equity": strat.get("max_position_pct_equity", 0.15),
             "max_sector_pct_equity": strat.get("max_sector_pct_equity", 0.25),
@@ -167,7 +168,7 @@ def build_payload(cfg: Config) -> dict:
             "drawdown_paused": state.drawdown_paused,
             "drawdown_pause_date": state.drawdown_pause_date,
             "n_positions": len(state.positions),
-            "n_slots": int(strat.get("n_slots", 0)),
+            "max_concurrent_positions": int(strat.get("max_concurrent_positions", 0)),
             "positions": positions,
             "pending_orders": pending,
             "pending_rebalances": pending_rebalances,

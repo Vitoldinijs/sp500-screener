@@ -7,16 +7,34 @@
 strategy:
   name: "ladder-momentum-value"
   start_capital: 10000.0        # virtual USD
-  n_slots: 21                   # target number of simultaneous positions
+  # Position COUNT is an output, not an input. There is no slot target: the
+  # portfolio deploys (1 - cash_reserve_pct) of equity across the names that
+  # score best, sizes each by conviction around target_position_pct_equity,
+  # and stops when the money runs out. With a 20% base and a 25% ceiling that
+  # settles around 4-6 holdings, more when conviction is evenly spread.
+  #
+  # Trade-off being accepted here, on purpose: concentration cuts breadth,
+  # and for a cross-sectional factor screen breadth is where the edge lives
+  # (IR ~ IC x sqrt(N)). Going from ~21 names to ~4 divides the information
+  # ratio by roughly 2.3 and multiplies idiosyncratic risk several-fold.
+  # The intent is a portfolio that expresses conviction; the backtest is the
+  # place to check what that costs.
+  target_position_pct_equity: 0.20  # base size before conviction scaling
+  max_concurrent_positions: 25  # safety rail against degenerate dust, not a target
+  min_position_notional: 250.0  # never open a position smaller than this
   exit_rank_percentile_below: 0.35  # signal is weak below this relative-score percentile
   exit_confirmation_observations: 3  # consecutive reviews needed before a signal-based exit
   buys_per_day: 1               # one new entry per trading day
   allow_duplicate_tickers: false
   max_positions_per_sector: 5   # hard count cap by sector
-  max_position_pct_equity: 0.15 # target exposure to one stock <= 15% of portfolio equity
+  max_position_pct_equity: 0.25 # hard ceiling for one stock. This is what sets the
+                                 # MINIMUM number of holdings: 25% -> at least 4.
   max_portfolio_drawdown_pct: 0.20 # pause new buys after a 20% drawdown from peak equity
   drawdown_resume_below_pct: 0.12 # resume new buys only after drawdown recovers to 12% or less
-  max_sector_pct_equity: 0.25   # target sector exposure <= 25% of portfolio equity
+  max_sector_pct_equity: 0.50   # raised with the position cap: at 25% per name a
+                                 # 25% sector cap would have allowed only one
+                                 # holding per sector, forcing 4 names into 4
+                                 # different sectors regardless of the scores
   cash_reserve_pct: 0.10        # target cash buffer; the rest is allocated to open slots
   allocation_min_multiplier: 0.60 # relative target weight for the weakest eligible rank
   allocation_max_multiplier: 1.80 # relative target weight for the strongest eligible rank

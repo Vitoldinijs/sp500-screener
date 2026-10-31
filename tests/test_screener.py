@@ -226,7 +226,7 @@ def test_allocation_multiplier_and_entry_notional_follow_rank_strength():
 
 def test_new_entries_obey_single_name_and_sector_exposure_caps():
     cfg = _cfg()
-    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_concurrent_positions"] = 3
     cfg.strategy["max_position_pct_equity"] = 0.08
     cfg.strategy["max_sector_pct_equity"] = 0.25
 
@@ -261,7 +261,7 @@ def test_new_entries_obey_single_name_and_sector_exposure_caps():
 
 def test_rebalance_targets_obey_single_name_and_sector_caps():
     cfg = _cfg()
-    cfg.strategy["n_slots"] = 4
+    cfg.strategy["max_concurrent_positions"] = 4
     cfg.strategy["max_position_pct_equity"] = 0.20
     cfg.strategy["max_sector_pct_equity"] = 0.25
     state = portfolio.PortfolioState.new(10_000.0)
@@ -293,22 +293,29 @@ def test_rebalance_targets_obey_single_name_and_sector_caps():
     assert all(value <= 2_000.0 + 0.01 for value in targets.values())
 
 
-def test_default_single_stock_cap_is_15_pct_of_equity():
+def test_single_stock_cap_bounds_the_strongest_conviction():
+    """The per-name ceiling is what sets the minimum number of holdings.
+
+    A maximum-conviction pick (weight 1.8 against an empty book, so 1.8x the
+    base target) must still be clipped to max_position_pct_equity. At 25%
+    that is what guarantees at least four holdings.
+    """
     cfg = _cfg()
-    assert abs(cfg.strategy["max_position_pct_equity"] - 0.15) < TOL
-    cfg.strategy["n_slots"] = 3
+    cap = float(cfg.strategy["max_position_pct_equity"])
+    assert abs(cap - 0.25) < TOL, "config changed; update this expectation"
     state = portfolio.PortfolioState.new(10_000.0)
     order = portfolio.Ladder(cfg, state).schedule_entry(
         [{"ticker": "AAA", "sector": "Tech", "composite": 2.0,
           "allocation_weight": 1.8, "last_close": 100.0}]
     )
     assert order is not None
-    assert abs(order["notional"] - 1_500.0) < 0.02
+    assert abs(order["notional"] - 10_000.0 * cap) < 0.02
+    assert round(1.0 / cap) == 4, "a 25% ceiling implies a 4-position minimum"
 
 
 def test_drawdown_breaker_cancels_pending_buys_without_liquidating_positions():
     cfg = _cfg()
-    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_concurrent_positions"] = 3
     cfg.strategy["max_portfolio_drawdown_pct"] = 0.20
     cfg.strategy["drawdown_resume_below_pct"] = 0.12
     state = portfolio.PortfolioState.new(10_000.0)
@@ -343,7 +350,7 @@ def test_drawdown_breaker_cancels_pending_buys_without_liquidating_positions():
 
 def test_drawdown_breaker_resumes_only_after_recovery_below_hysteresis_level():
     cfg = _cfg()
-    cfg.strategy["n_slots"] = 3
+    cfg.strategy["max_concurrent_positions"] = 3
     cfg.strategy["max_position_pct_equity"] = 0.15
     cfg.strategy["max_portfolio_drawdown_pct"] = 0.20
     cfg.strategy["drawdown_resume_below_pct"] = 0.12
@@ -533,8 +540,11 @@ def test_cash_and_equity_accounting_is_exact():
     pos = state.positions[0]
     assert abs(state.cash + pos["cost_basis"] - 10_000.0) < 0.01, \
         "cash spent must equal the position's cost basis"
-    assert abs(state.equity() - 10_000.0) < 0.5, \
-        "buying at the marking price should leave equity ~flat (minus slippage)"
+    # Equity dips by exactly the slippage paid, which scales with the size
+    # of the position — not by a fixed amount.
+    expected_slip = pos["cost_basis"] * float(cfg.strategy["slippage_bps"]) / 10_000.0
+    assert abs(state.equity() - (10_000.0 - expected_slip)) < 0.02, \
+        "buying at the marking price should cost exactly the slippage"
     assert state.cash >= -TOL, "cash must never go negative"
 
 
@@ -699,7 +709,7 @@ def test_position_exits_after_signal_is_weak_for_consecutive_reviews():
 
 def test_ladder_never_exceeds_slots_and_never_double_buys():
     cfg = _cfg()
-    n_slots = int(cfg.strategy["n_slots"])
+    n_slots = int(cfg.strategy["max_concurrent_positions"])
     uni, px, fund = _fixture(n=45, days=400)
     close = price_mod.to_wide(px, "close")
     open_w = price_mod.to_wide(px, "open")
