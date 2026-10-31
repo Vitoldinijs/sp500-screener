@@ -130,6 +130,9 @@ def fetch_macro(start: date, end: date, api_key: str | None = None,
     return normalise(pd.concat(frames, ignore_index=True))
 
 
+_WARNED_EMPTY = False
+
+
 def get_macro(cache_path: Path, start: date, end: date,
               api_key: str | None = None, allow_network: bool = True) -> pd.DataFrame:
     """Refresh the cache where possible and return the merged long frame."""
@@ -144,7 +147,12 @@ def get_macro(cache_path: Path, start: date, end: date,
     fresh = fetch_macro(start, end, api_key) if allow_network else _empty()
     if fresh.empty:
         if cached.empty:
-            print("[macro] no data available from cache or network")
+            # A replay calls this once per simulated session; warn once
+            # rather than printing the same line thousands of times.
+            global _WARNED_EMPTY
+            if not _WARNED_EMPTY:
+                print("[macro] no data available from cache or network")
+                _WARNED_EMPTY = True
         return cached
 
     merged = normalise(pd.concat([cached, fresh], ignore_index=True))

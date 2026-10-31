@@ -1638,6 +1638,86 @@ def test_override_rejects_an_unknown_config_path():
     assert raw["strategy"]["max_position_pct_equity"] == 0.5
 
 
+def _synthetic_price_history(tickers, start="2014-06-02", end="2016-03-01", seed=5):
+    dates = pd.bdate_range(start, end)
+    rng = np.random.default_rng(seed)
+    frames = []
+    for t in tickers:
+        px = 100.0 * np.exp(np.cumsum(rng.normal(0.0004, 0.013, len(dates))))
+        frames.append(pd.DataFrame({"date": dates, "ticker": t, "open": px,
+                                    "high": px * 1.01, "low": px * 0.99,
+                                    "close": px, "volume": 3_000_000}))
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_no_fundamentals_mode_replays_a_date_before_the_first_snapshot():
+    """An early-start replay must clear EVERY look-ahead guard, not most.
+
+    Regression test for a real failure: three separate checks compare the
+    start against the first fundamental snapshot, written at different times
+    in different wording. Two were updated for --no-fundamentals and the
+    third was missed, so the sweep failed on every leg. Running the real
+    thing end to end is the only check that can't miss a fourth copy.
+    """
+    import sys as _sys
+    import tempfile
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    cfg = _cfg()
+    uni = pd.read_csv(cfg.path("universe_csv"))
+    tickers = sorted(set(uni["ticker"].astype(str).str.upper()))[:40] + ["SPY"]
+    prices = _synthetic_price_history(tickers)
+
+    with tempfile.TemporaryDirectory() as td:
+        summary = bt.run_backtest(
+            ROOT / "config.yml", prices, date(2016, 1, 4), date(2016, 2, 15),
+            Path(td) / "out", warmup_sessions=320, no_fundamentals=True,
+        )
+
+    assert summary["actual_period"]["trading_sessions"] > 10
+    assert summary["configuration"]["fundamentals_used"] is False
+    # The surviving blocks must be exactly the ones that need no fundamentals.
+    assert set(summary["configuration"]["factor_weights"]) == {
+        "momentum", "risk", "technical", "macro"
+    }
+    # And the report must say so, so the number can never be quoted later as
+    # a result for the live strategy.
+    assert any("NOT the live strategy" in lim for lim in summary["limitations"])
+
+
+def test_replay_reads_macro_from_the_workspace_copy():
+    """The macro file must reach the replay, or half the sweep is a no-op.
+
+    A replay runs with no network by design, so the regime layer and the
+    macro block read state/macro.csv and nothing else. If that file is not
+    copied into the isolated workspace both go inert, and the regime-off and
+    macro-off legs silently become identical to the baseline — a comparison
+    that looks fine and means nothing.
+    """
+    import sys as _sys
+    import tempfile
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    cfg = _cfg()
+    macro_rel = Path(cfg["paths"]["macro_csv"])
+    source = ROOT / macro_rel
+    created = False
+    if not source.exists():
+        source.parent.mkdir(parents=True, exist_ok=True)
+        _macro_frame().to_csv(source, index=False)
+        created = True
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            bt._copy_replay_inputs(ROOT / "config.yml", Path(td))
+            assert (Path(td) / macro_rel).exists(), \
+                "macro.csv was not copied into the replay workspace"
+    finally:
+        if created:
+            source.unlink()
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

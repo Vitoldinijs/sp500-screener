@@ -382,7 +382,8 @@ def _copy_replay_inputs(config_path: Path, workspace: Path,
             yaml.safe_dump(raw, fh, sort_keys=False, allow_unicode=True)
         for note in mutation_notes:
             print(f"[backtest] {note}")
-    for key in ("universe_csv", "fundamentals_csv", "universe_history_csv"):
+    for key in ("universe_csv", "fundamentals_csv", "universe_history_csv",
+                "macro_csv"):
         relative = Path(raw_cfg["paths"][key])
         src = source_root / relative
         if not src.exists():
@@ -459,7 +460,7 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
             f"No {benchmark_symbol} trading sessions between {start_date} and {end_date}."
         )
     actual_start, actual_end = market_dates[0].date(), market_dates[-1].date()
-    if actual_start < earliest_fundamental:
+    if actual_start < earliest_fundamental and not no_fundamentals:
         raise ValueError(
             f"First replay session {actual_start} predates the earliest point-in-time "
             f"fundamental snapshot ({earliest_fundamental})."
@@ -575,6 +576,12 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                 limitations.append(
                     f"Only {len(trades)} trades closed; trade-level statistics have a small sample."
                 )
+            if no_fundamentals:
+                limitations.append(
+                    "Fundamental blocks (value, quality, growth, earnings) were "
+                    "zero-weighted for this run. These results describe the "
+                    "price- and macro-derived core only, NOT the live strategy."
+                )
             if missing_tickers:
                 limitations.append(
                     f"{len(missing_tickers)} current-universe tickers had no price history in the downloaded window."
@@ -626,6 +633,13 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "snapshot_dates_available": int(history_dates.dt.date.nunique()),
                     "point_in_time_membership_used_for_entire_period": bool(membership_history_covers_start),
                     "selection_rule": "latest archived membership snapshot on or before each session; static CSV fallback before first archive",
+                },
+                "configuration": {
+                    "fundamentals_used": not no_fundamentals,
+                    "mode": ("price-and-macro only (momentum/risk/technical/macro)"
+                             if no_fundamentals else "all factor blocks"),
+                    "config_mutations": list(getattr(cfg, "mutation_notes", []) or []),
+                    "factor_weights": dict(cfg.weights),
                 },
                 "data_coverage": {
                     "current_universe_tickers": int(len(raw_universe)),

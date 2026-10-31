@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from screener.config import Config  # noqa: E402
+from screener.data import macro as macro_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
 
 
@@ -85,6 +86,25 @@ def main(argv: list[str] | None = None) -> int:
     if thin:
         print(f"[prefetch] note: {thin} tickers have under 100 bars "
               "(recent listings or delisted names)")
+
+    # Macro too. A replay runs without network by design, so the regime
+    # layer and the macro block read this file and nothing else. Skip it and
+    # both go silently inert — which would make the regime-off and macro-off
+    # sweep legs identical to the baseline and the comparison worthless.
+    macro_path = cfg.path("macro_csv")
+    macro = macro_mod.get_macro(macro_path, download_start, end, allow_network=True)
+    if macro.empty:
+        print("[prefetch] WARNING: no macro data. The regime layer will sit at "
+              "full exposure and the macro block will be absent, so the "
+              "regime-off and macro-off legs will not differ from baseline. "
+              "Check that FRED_API_KEY is set.", file=sys.stderr)
+    else:
+        by_series = macro.groupby("series_id")["date"].agg(["min", "max", "count"])
+        print(f"[prefetch] macro: {len(macro):,} rows across "
+              f"{len(by_series)} series -> {macro_path}")
+        for sid, row in by_series.iterrows():
+            print(f"    {sid:<14} {row['min'].date()} .. {row['max'].date()}  "
+                  f"({int(row['count']):,})")
     return 0
 
 

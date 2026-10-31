@@ -59,22 +59,26 @@ jobs:
       - name: Restore any existing price cache
         uses: actions/cache/restore@v4
         with:
-          path: state/cache/prices.csv.gz
-          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          path: |
+            state/cache/prices.csv.gz
+            state/macro.csv
+          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
           restore-keys: |
-            backtest-prices-
-      - name: Download price history
+            backtest-data-
+      - name: Download price and macro history
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: |
           python scripts/prefetch_prices.py \
             --start "${{ inputs.start_date || '2016-01-04' }}" \
             ${{ inputs.end_date && format('--end {0}', inputs.end_date) || '' }}
-      - name: Save price cache
+      - name: Save the shared cache
         uses: actions/cache/save@v4
         with:
-          path: state/cache/prices.csv.gz
-          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          path: |
+            state/cache/prices.csv.gz
+            state/macro.csv
+          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
 
   # ---------------------------------------------------------------------
   # Variant sweep. Each leg changes exactly ONE thing against the baseline,
@@ -113,15 +117,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Restore the shared price cache
-        # Populated once by the prefetch job above, so each leg starts with
-        # the full history already on disk.
+      - name: Restore the shared price and macro cache
+        # Populated once by the prefetch job above. The macro file matters as
+        # much as the prices: a replay runs without network, so the regime
+        # layer and the macro block read it and nothing else.
         uses: actions/cache/restore@v4
         with:
-          path: state/cache/prices.csv.gz
-          key: backtest-prices-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          path: |
+            state/cache/prices.csv.gz
+            state/macro.csv
+          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
           restore-keys: |
-            backtest-prices-
+            backtest-data-
 
       - name: Run ${{ matrix.name }}
         env:
