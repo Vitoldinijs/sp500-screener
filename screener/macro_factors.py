@@ -121,6 +121,29 @@ def driver_trends(changes: pd.DataFrame, lookback_weeks: int = 13) -> dict[str, 
     return out
 
 
+# Betas are two-year regressions on WEEKLY data: between Monday and Friday
+# the fitted values barely move, yet a replay recomputes them from scratch
+# every simulated session — resampling ~500 price columns and solving a
+# least-squares system each time. Caching per ISO week cuts that work by
+# about five with no change to any value the strategy sees, because within
+# a week the inputs round to the same weekly observations anyway.
+_BETA_CACHE: dict = {}
+_BETA_CACHE_MAX = 8
+
+
+def _beta_cache_key(close_wide: pd.DataFrame, changes: pd.DataFrame,
+                    window_weeks: int, min_obs: int):
+    last = close_wide.index[-1]
+    # Fingerprint the data, not just its shape: two different frames with
+    # the same dimensions and end date must not share a cached fit.
+    tail = close_wide.iloc[-1].to_numpy(dtype="float64", na_value=np.nan)
+    digest = float(np.nansum(tail)), float(np.nansum(tail[::7]))
+    return (
+        last.isocalendar()[:2], close_wide.shape, digest,
+        tuple(changes.columns), len(changes), window_weeks, min_obs,
+    )
+
+
 def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
                    window_weeks: int = 104, min_obs: int = 60) -> pd.DataFrame:
     """Multivariate betas of weekly stock returns on weekly driver changes.
@@ -130,6 +153,11 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     """
     if close_wide is None or close_wide.empty or changes is None or changes.empty:
         return pd.DataFrame()
+
+    key = _beta_cache_key(close_wide, changes, window_weeks, min_obs)
+    hit = _BETA_CACHE.get(key)
+    if hit is not None:
+        return hit
 
     weekly_px = close_wide.sort_index().resample("W-FRI").last()
     rets = np.log(weekly_px.where(weekly_px > 0)).diff()
@@ -161,6 +189,9 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     betas = pd.DataFrame(
         coef[1:].T, index=keep.columns, columns=[f"beta_{c}" for c in X.columns]
     )
+    if len(_BETA_CACHE) >= _BETA_CACHE_MAX:
+        _BETA_CACHE.pop(next(iter(_BETA_CACHE)))
+    _BETA_CACHE[key] = betas
     return betas
 
 

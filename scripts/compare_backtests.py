@@ -98,6 +98,11 @@ def main(argv: list[str]) -> int:
             f"| {_fmt(r['avg_exposure'], 'pct0')} |"
         )
 
+    if sessions and max(sessions) < 500:
+        print(
+            f"\n> **Caution: only {max(sessions)} sessions.** Below roughly two "
+            "years, differences between legs are mostly noise.\n"
+        )
     print(
         "\n> Each leg changes one setting against `baseline-cap25`, so a gap "
         "is attributable to that setting. Sharpe and drawdown matter more "
@@ -106,6 +111,10 @@ def main(argv: list[str]) -> int:
         "extra return is paid for by the extra risk.\n"
         "\n> This sweep runs WITHOUT fundamental blocks, so it measures the "
         "momentum/risk/technical/macro core only — not the live strategy.\n"
+        "\n> **The window is one market regime.** A period that trends up "
+        "flatters concentration and penalises the regime layer, for reasons "
+        "that will not repeat in a different decade. Read the concentration "
+        "legs as 'what this would have done here', not 'what is better'.\n"
     )
     return 0
 

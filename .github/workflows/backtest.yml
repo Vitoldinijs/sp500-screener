@@ -24,7 +24,7 @@ on:
           - price-macro-sweep
           - full-single
       start_date:
-        description: "Start YYYY-MM-DD. Blank: 2016-01-04 for the sweep, first fundamental snapshot for full."
+        description: "Start YYYY-MM-DD. Blank: 2024-01-02 for the sweep, first fundamental snapshot for full."
         required: false
         type: string
         default: ""
@@ -62,7 +62,7 @@ jobs:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
           restore-keys: |
             backtest-data-
       - name: Download price and macro history
@@ -70,7 +70,7 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: |
           python scripts/prefetch_prices.py \
-            --start "${{ inputs.start_date || '2016-01-04' }}" \
+            --start "${{ inputs.start_date || '2024-01-02' }}" \
             ${{ inputs.end_date && format('--end {0}', inputs.end_date) || '' }}
       - name: Save the shared cache
         uses: actions/cache/save@v4
@@ -78,7 +78,7 @@ jobs:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
 
   # ---------------------------------------------------------------------
   # Variant sweep. Each leg changes exactly ONE thing against the baseline,
@@ -88,7 +88,9 @@ jobs:
     if: inputs.mode == 'price-macro-sweep'
     needs: prefetch
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # A hosted runner is roughly half the speed this was profiled at, and
+    # the first attempt died at the 2h default partway through a 2016 start.
+    timeout-minutes: 330
     strategy:
       fail-fast: false
       max-parallel: 2        # these are network-heavy; don't get rate-limited
@@ -126,7 +128,7 @@ jobs:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2016-01-04' }}-${{ inputs.end_date }}
+          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
           restore-keys: |
             backtest-data-
 
@@ -137,7 +139,7 @@ jobs:
           BACKTEST_END: ${{ inputs.end_date }}
         run: |
           args=(--no-fundamentals --output-dir "backtest-results/${{ matrix.name }}" --verbose)
-          args+=(--start "${BACKTEST_START:-2016-01-04}")
+          args+=(--start "${BACKTEST_START:-2024-01-02}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
           # shellcheck disable=SC2206
           extra=(${{ matrix.args }})
