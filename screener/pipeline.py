@@ -53,7 +53,8 @@ def run_daily(cfg: Config, allow_network: bool = True,
               prices_long: pd.DataFrame | None = None,
               asof: date | None = None,
               build_report: bool = True,
-              replay_cache: bool = False) -> dict:
+              replay_cache: bool = False,
+              derive_outcomes: bool = True) -> dict:
     ensure_dirs(cfg)
     strat = cfg.strategy
     dcfg = cfg.data
@@ -287,6 +288,12 @@ def run_daily(cfg: Config, allow_network: bool = True,
         _build_report(cfg, state, scored, meta, close_wide)
     _append_run_log(cfg, meta, state)
     _append_decision_history(cfg, scored, state, data_date, chosen, shortlist, meta)
+    # Both ledgers below are idempotent rebuilds from decision_history and
+    # trades, and feed reporting only — no trading decision reads them. A
+    # replay therefore gets an identical final state by deriving them once
+    # at the end instead of re-reading a growing file every session.
+    if not derive_outcomes:
+        return meta
     outcome_summary = lifecycle.reconcile_signal_outcomes(
         cfg.path("decision_history_csv"),
         cfg.path("trades_csv"),
@@ -351,9 +358,21 @@ def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
     trade_id when a position actually closes.
     """
     path = cfg.path("decision_history_csv")
-    existing = _load_csv(path)
     if scored.empty:
         return
+    # Only the dedupe keys are needed here. Reading the whole ledger — tens
+    # of columns and, by the end of a replay, hundreds of thousands of rows
+    # — just to build a set of (date, ticker) pairs was both slow and the
+    # source of the mixed-dtype warnings: pandas infers types per chunk, and
+    # a column that is text in one chunk and all-NaN in another comes back
+    # inconsistent. Naming the columns and their type removes both problems.
+    existing = pd.DataFrame()
+    if path.exists():
+        try:
+            existing = pd.read_csv(path, usecols=["data_date", "ticker"],
+                                   dtype=str)
+        except (ValueError, OSError, pd.errors.ParserError) as exc:
+            _log(f"could not read decision history keys: {exc}")
 
     positions = {p.get("ticker"): p for p in state.positions}
     pending = {

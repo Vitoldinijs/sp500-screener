@@ -1805,6 +1805,57 @@ def test_historical_load_universe_applies_the_inclusion_filter():
             "the fallback path let a future constituent through"
 
 
+def test_outcome_ledger_is_identical_whether_rebuilt_once_or_every_session():
+    """Deferring the rebuild must not change what the learner will read.
+
+    A replay used to re-read and rebuild the whole decision ledger every
+    simulated session — hundreds of thousands of rows by the end, which is
+    both quadratic and where the mixed-dtype warnings came from. Deriving it
+    only on the final session is safe ONLY because the rebuild is a pure
+    function of decision_history and trades. This asserts that property
+    rather than trusting it.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        decisions = root / "decision_history.csv"
+        trades = root / "trades.csv"
+
+        rows = []
+        for day in range(1, 6):
+            for ticker in ("AAA", "BBB", "CCC"):
+                rows.append({
+                    "data_date": f"2026-01-0{day}", "ticker": ticker,
+                    "signal_id": f"2026-01-0{day}:{ticker}",
+                    "composite": 1.0 + day, "rank": 1, "rank_percentile": 0.9,
+                    "eligible": True, "portfolio_action": "NO_ACTION",
+                })
+        pd.DataFrame(rows).to_csv(decisions, index=False)
+        pd.DataFrame([{
+            "trade_id": 1, "ticker": "AAA", "name": "A", "sector": "Tech",
+            "signal_id": "2026-01-02:AAA", "signal_date": "2026-01-02",
+            "entry_date": "2026-01-03", "entry_price": 10.0,
+            "exit_date": "2026-01-05", "exit_price": 12.0, "shares": 1.0,
+            "cost_basis": 10.0, "proceeds": 12.0, "pnl": 2.0,
+            "return_pct": 0.2, "bars_held": 2, "exit_reason": "signal",
+            "av_verdict": "confirmed",
+        }]).to_csv(trades, index=False)
+
+        once = root / "once.csv"
+        lifecycle.reconcile_signal_outcomes(decisions, trades, once)
+
+        repeated = root / "repeated.csv"
+        for _ in range(5):
+            lifecycle.reconcile_signal_outcomes(decisions, trades, repeated)
+
+        a = pd.read_csv(once)
+        b = pd.read_csv(repeated)
+        pd.testing.assert_frame_equal(a, b)
+        assert len(a) == 1, "one closed trade should produce one outcome row"
+        assert a.iloc[0]["feature_link_status"] in ("linked", "linked_reconstructed")
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

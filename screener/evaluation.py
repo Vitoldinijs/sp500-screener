@@ -245,7 +245,7 @@ def refresh_lifecycle_evaluation(outcomes_path: Path, report_path: Path,
     """Read the reconciled ledger and write the current diagnostic report."""
     if outcomes_path.exists():
         try:
-            outcomes = pd.read_csv(outcomes_path)
+            outcomes = pd.read_csv(outcomes_path, low_memory=False)
         except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError):
             outcomes = pd.DataFrame()
     else:

@@ -166,7 +166,12 @@ def reconcile_signal_outcomes(decision_history_path: Path,
         if not path.exists():
             return pd.DataFrame()
         try:
-            return pd.read_csv(path)
+            # low_memory=False: infer each column from the whole file. The
+            # chunked default gave columns that are text in one chunk and
+            # empty in another mixed dtypes — harmless for most fields, but
+            # signal_id is the key every trade is joined back on, and a key
+            # that changes type mid-file loses links silently.
+            return pd.read_csv(path, low_memory=False)
         except (OSError, pd.errors.ParserError, UnicodeDecodeError):
             return pd.DataFrame()
 
