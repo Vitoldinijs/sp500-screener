@@ -1957,6 +1957,150 @@ def test_breaker_still_fires_on_a_fresh_drawdown_after_release():
     assert state.drawdown_paused
 
 
+def _ic_panel_fixture(sessions: int = 320, tickers: int = 160):
+    """A synthetic world whose answer is known in advance.
+
+    Every name carries a permanent drift plus daily noise, so the drift is
+    the one thing a signal could legitimately detect. `daily[j]` is the
+    return INTO `open[j]`, which fixes what each probe below should score.
+    """
+    rng = np.random.default_rng(11)
+    names = [f"T{i:03d}" for i in range(tickers)]
+    dates = pd.bdate_range("2020-01-02", periods=sessions)
+    drift = rng.normal(0, 0.0012, tickers)
+    noise = rng.normal(0, 0.016, (sessions, tickers))
+    daily = drift[None, :] + noise
+    opens = 100.0 * np.exp(np.cumsum(daily, axis=0))
+
+    prices = pd.DataFrame({
+        "date": np.repeat(dates, tickers),
+        "ticker": np.tile(names, sessions),
+        "open": opens.ravel(), "close": opens.ravel(),
+        "high": opens.ravel(), "low": opens.ravel(), "volume": 1e6,
+    })
+    rows = pd.DataFrame({
+        "data_date": np.repeat(dates.strftime("%Y-%m-%d"), tickers),
+        "ticker": np.tile(names, sessions),
+        "sector": "Test", "eligible": True, "exclude_reason": "",
+        "rank_percentile": rng.random(sessions * tickers),
+        "composite": np.tile(drift, sessions),
+        "blocks_used": 3, "last_close": opens.ravel(),
+        # the permanent drift: must be detected
+        "block_real": np.tile(drift, sessions),
+        # fresh noise: must score zero
+        "block_noise": rng.normal(0, 1, sessions * tickers),
+        # the overnight shock between the signal close and the entry open.
+        # The strategy cannot capture it, so a correctly aligned window
+        # excludes it and this must score zero. Drift is deliberately NOT
+        # included — it would make the probe a proxy for the real signal.
+        "block_gap": np.vstack([noise[1:, :], np.zeros((1, tickers))]).ravel(),
+    })
+    return prices, rows
+
+
+class _PanelCfg:
+    def __init__(self, path):
+        self._path = path
+
+    def path(self, key):
+        assert key == "decision_history_csv", key
+        return self._path
+
+    def __getitem__(self, key):
+        assert key == "metric_blocks", key
+        return {"real": [], "noise": [], "gap": []}
+
+
+def test_factor_panel_measures_only_returns_the_strategy_could_capture():
+    """The IC panel must detect a real signal and nothing else.
+
+    Three probes with known answers. If the forward window were off by one
+    session, `block_gap` would pick up the entry gap and score positive —
+    the power check below confirms that detector actually fires, so its
+    zero here is meaningful rather than vacuous.
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import factor_ic
+
+    prices, rows = _ic_panel_fixture()
+    horizon = 21
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        hist = work / "decision_history.csv"
+        rows.to_csv(hist, index=False)
+        count = backtest_mod._export_factor_panel(_PanelCfg(hist), prices, work)
+        assert count == len(rows)
+
+        panel_path = work / "factor_panel.csv.gz"
+        raw = pd.read_csv(panel_path)
+
+        # Alignment, verified against an independently computed value.
+        wide = prices.pivot_table(index="date", columns="ticker", values="open")
+        t0 = 40
+        signal_date = wide.index[t0].strftime("%Y-%m-%d")
+        expected = wide.iloc[t0 + 1 + horizon]["T000"] / wide.iloc[t0 + 1]["T000"] - 1
+        got = raw.loc[(raw["data_date"] == signal_date) & (raw["ticker"] == "T000"),
+                      f"fwd_ret_{horizon}"]
+        assert abs(float(got.iloc[0]) - expected) < 1e-9, "forward window misaligned"
+
+        df = factor_ic.load_panel(panel_path, horizon)
+        scores = {}
+        for col in ("block_real", "block_noise", "block_gap"):
+            ics = factor_ic.ic_series(df, col)
+            t_stat, _ = factor_ic.newey_west_tstat(ics, lag=horizon)
+            scores[col] = (float(ics.mean()), float(t_stat), ics)
+
+        real_ic, real_t, real_ics = scores["block_real"]
+        assert real_ic > 0.2, f"known signal not detected: IC={real_ic}"
+        assert real_t > 2, f"known signal not significant: t={real_t}"
+        for col in ("block_noise", "block_gap"):
+            ic, t_stat, _ = scores[col]
+            assert abs(ic) < 0.02, f"{col} should carry no signal, got IC={ic}"
+            assert abs(t_stat) < 2.5, f"{col} should not be significant, t={t_stat}"
+
+        # Newey-West must shrink the naive statistic on overlapping windows.
+        naive = real_ic / (real_ics.std(ddof=1) / np.sqrt(len(real_ics)))
+        assert naive > real_t * 1.5, (
+            f"overlap correction did not bite: naive {naive}, NW {real_t}"
+        )
+
+        # Power check: start the window one session early and the canary
+        # must fire. A probe that cannot fail would prove nothing above.
+        bad_exit = wide.shift(-horizon)
+        bad = (bad_exit.where(bad_exit > 0) / wide.where(wide > 0) - 1.0).stack().dropna()
+        bad.index.names = ["date", "ticker"]
+        check = raw.copy()
+        check["date"] = pd.to_datetime(check["data_date"])
+        check = check.set_index(["date", "ticker"])
+        check["fwd_bad"] = bad
+        check = check.reset_index().dropna(subset=["fwd_bad"])
+        check["excess"] = check["fwd_bad"] - check.groupby(
+            "data_date")["fwd_bad"].transform("mean")
+        bad_ic = float(factor_ic.ic_series(check, "block_gap").mean())
+        assert bad_ic > 0.05, f"canary cannot detect an off-by-one: IC={bad_ic}"
+
+
+def test_factor_panel_decile_profile_is_monotone_for_a_monotone_signal():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import factor_ic
+
+    prices, rows = _ic_panel_fixture()
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        hist = work / "decision_history.csv"
+        rows.to_csv(hist, index=False)
+        backtest_mod._export_factor_panel(_PanelCfg(hist), prices, work)
+        df = factor_ic.load_panel(work / "factor_panel.csv.gz", 21)
+        profile = factor_ic.decile_profile(df, "composite")
+
+    assert len(profile) == 10
+    rho = pd.Series(profile.to_numpy()).corr(
+        pd.Series(range(len(profile))), method="spearman"
+    )
+    assert rho > 0.9, f"monotone signal gave a non-monotone profile: rho={rho}"
+    assert profile.iloc[-1] > profile.iloc[0]
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

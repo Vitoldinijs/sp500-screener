@@ -431,6 +431,89 @@ def _copy_replay_inputs(config_path: Path, workspace: Path,
     return copied
 
 
+# Forward-return horizons attached to the exported panel, in trading
+# sessions. 21 is the primary one: it matches the roughly one-month holding
+# period the strategy targets. 63 is there to show whether a signal that
+# works over a month is still alive over a quarter, or has already decayed.
+PANEL_HORIZONS = (21, 63)
+
+
+def _export_factor_panel(cfg: Config, prices: pd.DataFrame, out_dir: Path) -> int:
+    """Export every scored name on every session with its realised outcome.
+
+    Why this exists
+    ---------------
+    Portfolio P&L answers "did this book make money", and over a two-year
+    replay that question has a sample size of a few dozen closed trades —
+    far too small to tell a working signal from one lucky theme. The scoring
+    model, by contrast, ranks ~500 names every session, so the question "did
+    higher-ranked names outperform lower-ranked ones over the next month"
+    has hundreds of thousands of observations. That is the statistic worth
+    trusting, and it is independent of position sizing, exposure gating and
+    the breaker — none of which touch the ranks.
+
+    Forward returns are measured OPEN-to-OPEN starting from the session
+    AFTER the signal date, because that is exactly when the strategy can
+    transact. Using closes from the signal date onward would hand the model
+    the overnight gap it could never capture, which inflates every
+    subsequent statistic.
+
+    This file is written once the replay has finished and is never read back
+    by the pipeline, the learner or the scorer. It is a measurement
+    artifact; feeding it into weight selection would be look-ahead bias.
+    """
+    history_path = cfg.path("decision_history_csv")
+    if not history_path.exists():
+        return 0
+
+    header = pd.read_csv(history_path, nrows=0).columns.tolist()
+    blocks = [f"block_{b}" for b in cfg["metric_blocks"]]
+    wanted = [
+        "data_date", "ticker", "sector", "eligible", "exclude_reason",
+        "rank_percentile", "composite", "blocks_used", "last_close",
+    ] + blocks
+    usecols = [c for c in wanted if c in header]
+    panel = pd.read_csv(history_path, usecols=usecols,
+                        dtype={"data_date": str, "ticker": str,
+                               "sector": str, "exclude_reason": str})
+    if panel.empty:
+        return 0
+
+    panel["date"] = pd.to_datetime(panel["data_date"], errors="coerce")
+    panel["ticker"] = panel["ticker"].astype(str).str.upper()
+    panel = panel.dropna(subset=["date"]).drop_duplicates(
+        subset=["date", "ticker"], keep="last"
+    )
+
+    open_wide = price_mod.to_wide(prices, "open")
+    close_wide = price_mod.to_wide(prices, "close")
+    # Fall back to closes for any name whose open is missing: an absent open
+    # would otherwise silently drop that observation from the whole study.
+    if not open_wide.empty and not close_wide.empty:
+        open_wide = open_wide.reindex_like(close_wide).fillna(close_wide)
+    elif open_wide.empty:
+        open_wide = close_wide
+    if open_wide.empty:
+        return 0
+
+    entry = open_wide.shift(-1)
+    entry = entry.where(entry > 0)
+    panel = panel.set_index(["date", "ticker"])
+    for horizon in PANEL_HORIZONS:
+        exit_px = open_wide.shift(-(1 + horizon))
+        # `stack()` keeps or drops NaNs depending on the pandas version, so
+        # drop them explicitly rather than relying on a keyword that moved.
+        fwd = (exit_px.where(exit_px > 0) / entry - 1.0).stack().dropna()
+        fwd.index.names = ["date", "ticker"]
+        panel[f"fwd_ret_{horizon}"] = fwd
+    panel = panel.reset_index()
+
+    out = panel.drop(columns=["date"])
+    target = out_dir / "factor_panel.csv.gz"
+    out.to_csv(target, index=False, compression="gzip")
+    return int(len(out))
+
+
 def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                  start: date | str, end: date | str,
                  output_dir: str | Path, warmup_sessions: int = 320,
@@ -729,6 +812,18 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "trade_statistics_reliable_sample": bool(len(trades) >= 30),
                 },
                 "limitations": limitations,
+            }
+
+            panel_rows = _export_factor_panel(cfg, prices, out_dir)
+            summary["factor_panel"] = {
+                "rows": panel_rows,
+                "file": "factor_panel.csv.gz" if panel_rows else None,
+                "horizons_sessions": list(PANEL_HORIZONS),
+                "note": (
+                    "Analysis-only export: per-session scores for every name "
+                    "with realised forward returns attached. Written after the "
+                    "replay finishes and never read back by the strategy."
+                ),
             }
 
             equity.to_csv(out_dir / "equity_curve.csv", index=False)

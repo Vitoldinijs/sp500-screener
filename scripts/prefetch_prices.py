@@ -47,7 +47,23 @@ def main(argv: list[str] | None = None) -> int:
 
     # Match the backtest's own warm-up window so the legs need nothing more.
     warmup_days = int(math.ceil(args.warmup_sessions * 365.25 / 252.0)) + 30
-    download_start = start - timedelta(days=warmup_days)
+
+    # The macro block needs more history than the price factors do. Betas are
+    # a 104-week regression of weekly stock returns on weekly driver changes,
+    # plus a 13-week trend window on top, so roughly 2.3 calendar years must
+    # already exist BEFORE the first replay session — about twice the 320
+    # trading sessions the price factors warm up on. Sizing the download from
+    # the warm-up alone is why the macro block sat unavailable for the first
+    # 165 sessions of the last run: the data simply was not there yet.
+    macro_settings = dict(cfg.data.get("macro_factors") or {})
+    beta_weeks = int(macro_settings.get("window_weeks", 104))
+    trend_weeks = int(macro_settings.get("trend_lookback_weeks", 13))
+    macro_days = int(math.ceil((beta_weeks + trend_weeks) * 7)) + 60
+
+    lead_days = max(warmup_days, macro_days)
+    download_start = start - timedelta(days=lead_days)
+    print(f"[prefetch] lead-in {lead_days} days "
+          f"(price warm-up {warmup_days}, macro betas {macro_days})")
 
     # Refresh the constituent list first. This is what carries `date_added`,
     # the index-inclusion date that stops a replay holding a company before

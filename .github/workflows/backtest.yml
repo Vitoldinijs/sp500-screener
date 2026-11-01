@@ -11,6 +11,15 @@ name: historical-backtest
 #                   sweep it is the only way right now to get a statistically
 #                   meaningful read on concentration, the regime layer and
 #                   the macro block.
+# * factor-ic     — ONE leg, long history, and the question is not what the
+#                   book returned but whether the ranking predicts anything.
+#                   Portfolio P&L over a few years rests on a few dozen
+#                   closed trades; the ranking is tested on every name on
+#                   every session, which is hundreds of thousands of
+#                   observations and the only sample big enough to separate
+#                   a signal from one lucky theme. Sizing, exposure gating
+#                   and the breaker do not touch ranks, so a sweep would add
+#                   nothing here — six legs would measure the same thing.
 
 on:
   workflow_dispatch:
@@ -22,9 +31,10 @@ on:
         default: "price-macro-sweep"
         options:
           - price-macro-sweep
+          - factor-ic
           - full-single
       start_date:
-        description: "Start YYYY-MM-DD. Blank: 2024-01-02 for the sweep, first fundamental snapshot for full."
+        description: "Start YYYY-MM-DD. Blank: 2024-01-02 for the sweep, 2020-01-02 for factor-ic, first fundamental snapshot for full."
         required: false
         type: string
         default: ""
@@ -44,7 +54,7 @@ jobs:
   # Yahoo, which would fail every leg identically.
   # ---------------------------------------------------------------------
   prefetch:
-    if: inputs.mode == 'price-macro-sweep'
+    if: inputs.mode == 'price-macro-sweep' || inputs.mode == 'factor-ic'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -71,10 +81,18 @@ jobs:
       - name: Download price and macro history
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BACKTEST_START: ${{ inputs.start_date }}
+          BACKTEST_END: ${{ inputs.end_date }}
+          MODE: ${{ inputs.mode }}
         run: |
-          python scripts/prefetch_prices.py \
-            --start "${{ inputs.start_date || '2024-01-02' }}" \
-            ${{ inputs.end_date && format('--end {0}', inputs.end_date) || '' }}
+          # Each mode has its own default window, and the prefetch must match
+          # the leg that will consume the cache: a shorter download would
+          # leave the replay silently short of history at its start.
+          if [[ "$MODE" == 'factor-ic' ]]; then default_start=2020-01-02
+          else default_start=2024-01-02; fi
+          args=(--start "${BACKTEST_START:-$default_start}")
+          if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          python scripts/prefetch_prices.py "${args[@]}"
       - name: Save the shared cache
         # The key MUST be unique per run. GitHub cache keys are immutable:
         # a save to an existing key is silently skipped. That is what went
@@ -183,6 +201,85 @@ jobs:
         with:
           name: backtest-${{ matrix.name }}-${{ github.run_number }}
           path: backtest-results/${{ matrix.name }}/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------
+  # Does the ranking predict returns? One leg, long history, and the answer
+  # comes from the exported panel rather than from the equity curve.
+  # ---------------------------------------------------------------------
+  factor-ic:
+    if: inputs.mode == 'factor-ic'
+    needs: prefetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore the shared price and macro cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state/cache/prices.csv.gz
+            state/macro.csv
+            screener/data/sp500.csv
+          key: backtest-data-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Replay and export the factor panel
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BACKTEST_START: ${{ inputs.start_date }}
+          BACKTEST_END: ${{ inputs.end_date }}
+        run: |
+          args=(--no-fundamentals --offline --require-inclusion-dates
+                --output-dir backtest-results/factor-ic --verbose)
+          args+=(--start "${BACKTEST_START:-2020-01-02}")
+          if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          python scripts/backtest.py "${args[@]}"
+
+      - name: Measure information content
+        if: always() && hashFiles('backtest-results/factor-ic/factor_panel.csv.gz') != ''
+        run: |
+          panel=backtest-results/factor-ic/factor_panel.csv.gz
+          {
+            echo '## Does the ranking predict returns?'
+            echo ''
+            echo '### Horizon 21 sessions (the holding period the strategy targets)'
+            echo '```'
+            python scripts/factor_ic.py "$panel" --horizon 21 --by-year
+            echo '```'
+            echo ''
+            echo '### Horizon 63 sessions (has the signal decayed by a quarter?)'
+            echo '```'
+            python scripts/factor_ic.py "$panel" --horizon 63
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarise the replay itself
+        if: always() && hashFiles('backtest-results/factor-ic/summary.json') != ''
+        run: |
+          {
+            echo '### Replay summary (context only — the IC above is the result)'
+            echo ''
+            echo '```json'
+            cat backtest-results/factor-ic/summary.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload panel and report
+        if: always() && hashFiles('backtest-results/factor-ic/summary.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: factor-ic-${{ github.run_number }}
+          path: backtest-results/factor-ic/
           retention-days: 30
 
   compare:
