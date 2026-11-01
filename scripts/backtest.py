@@ -776,6 +776,16 @@ def main(argv: list[str] | None = None) -> int:
             "Repeatable. Used to compare variants without editing config.yml."
         ),
     )
+    parser.add_argument(
+        "--require-inclusion-dates", action="store_true",
+        help=(
+            "Abort if the universe has no index-inclusion dates. Without them "
+            "the point-in-time membership filter is a silent no-op and the "
+            "replay trades companies before they joined the index — which "
+            "produces a plausible-looking result that is simply wrong. The "
+            "sweep sets this so that failure is loud."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -812,6 +822,19 @@ def main(argv: list[str] | None = None) -> int:
             | historical_tickers
             | {benchmark}
         )
+        if args.require_inclusion_dates:
+            check = pd.read_csv(universe_path)
+            if "date_added" not in check.columns:
+                raise RuntimeError(
+                    f"{universe_path} has no date_added column, so the replay "
+                    "cannot tell when a company joined the index and would "
+                    "trade names before they were constituents. Refresh the "
+                    "universe (scripts/prefetch_prices.py, or any networked "
+                    "run) and retry."
+                )
+            known = pd.to_datetime(check["date_added"], errors="coerce").notna().sum()
+            print(f"[backtest] index-inclusion dates: {known}/{len(check)} names")
+
         prices = _read_price_history(
             cfg, tickers, requested_start, requested_end,
             args.warmup_sessions, args.offline,

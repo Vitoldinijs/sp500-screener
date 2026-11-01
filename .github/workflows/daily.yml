@@ -86,7 +86,12 @@ jobs:
         run: |
           git config user.name  "screener-bot"
           git config user.email "screener-bot@users.noreply.github.com"
-          git add -A state Portfolio.xlsx config.yml docs/data
+          # screener/data/sp500.csv is refreshed from Wikipedia on every
+          # run and carries each name's index-inclusion date. Left
+          # uncommitted it stayed stale in the repo, which is the copy a
+          # backtest checkout sees — so the replay could not tell when a
+          # company joined the index.
+          git add -A state Portfolio.xlsx config.yml docs/data screener/data/sp500.csv
           if git diff --staged --quiet; then
             echo "nothing changed (market holiday?) — skipping commit"
             exit 0

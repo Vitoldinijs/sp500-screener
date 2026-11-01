@@ -62,7 +62,10 @@ jobs:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
+            screener/data/sp500.csv
+          # Restore from any recent entry to avoid re-downloading, but SAVE
+          # under a run-unique key below.
+          key: backtest-data-${{ github.run_id }}
           restore-keys: |
             backtest-data-
       - name: Download price and macro history
@@ -73,12 +76,19 @@ jobs:
             --start "${{ inputs.start_date || '2024-01-02' }}" \
             ${{ inputs.end_date && format('--end {0}', inputs.end_date) || '' }}
       - name: Save the shared cache
+        # The key MUST be unique per run. GitHub cache keys are immutable:
+        # a save to an existing key is silently skipped. That is what went
+        # wrong last run — the key already held a prices-only entry from
+        # when FRED was failing, so the freshly downloaded macro series and
+        # refreshed constituent list were never stored, and every leg
+        # restored the stale entry instead.
         uses: actions/cache/save@v4
         with:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
+            screener/data/sp500.csv
+          key: backtest-data-${{ github.run_id }}
 
   # ---------------------------------------------------------------------
   # Variant sweep. Each leg changes exactly ONE thing against the baseline,
@@ -131,9 +141,12 @@ jobs:
           path: |
             state/cache/prices.csv.gz
             state/macro.csv
-          key: backtest-data-${{ inputs.start_date || '2024-01-02' }}-${{ inputs.end_date }}
-          restore-keys: |
-            backtest-data-
+            screener/data/sp500.csv
+          # This run's entry, written by prefetch. No restore-keys
+          # fallback: silently running on another run's data is exactly the
+          # failure being fixed here.
+          key: backtest-data-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Run ${{ matrix.name }}
         env:
@@ -145,7 +158,7 @@ jobs:
           # into the restored cache. Without it every leg re-downloads ~1.5M
           # rows it already has, which was most of the previous run's wall
           # clock and the reason the legs had to be throttled.
-          args=(--no-fundamentals --offline
+          args=(--no-fundamentals --offline --require-inclusion-dates
                 --output-dir "backtest-results/${{ matrix.name }}" --verbose)
           args+=(--start "${BACKTEST_START:-2024-01-02}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
