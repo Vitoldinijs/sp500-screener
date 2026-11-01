@@ -1,10 +1,38 @@
 {
   "cash": 10000.0,
   "start_capital": 10000.0,
-  "bar_count": 0,
-  "last_run_date": null,
+  "bar_count": 1,
+  "last_run_date": "2026-10-30",
   "positions": [],
-  "pending_orders": [],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "HAS",
+      "sector": "Consumer Discretionary",
+      "name": "Hasbro",
+      "notional": 2500.0,
+      "allocation_weight": 1.8000000000000003,
+      "rank_percentile": 1.0,
+      "entry_score": 0.9936428407161737,
+      "rank": 1,
+      "blocks": {
+        "value": -0.18936221941652912,
+        "quality": 1.2292349081066132,
+        "growth": 0.7130240055843002,
+        "momentum": 1.2519001624441204,
+        "earnings": 3.283125684334105,
+        "risk": 0.11165897463760122,
+        "technical": -0.12738860389187268,
+        "macro": null
+      },
+      "signal_close": 119.08999633789062,
+      "signal_date": "2026-10-30",
+      "signal_id": "2026-10-30:HAS",
+      "av_verdict": "confirmed",
+      "av_reason": "price confirmed; OVERVIEW unavailable",
+      "reason": "rank-weighted composite score"
+    }
+  ],
   "next_trade_id": 1,
   "version": 2,
   "peak_equity": 10000.0,
