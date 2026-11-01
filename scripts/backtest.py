@@ -515,6 +515,7 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     prices_long=prices,
                     asof=session.date(),
                     build_report=False,
+                    replay_cache=True,
                 )
                 if verbose and (index % 25 == 0 or index == len(market_dates)):
                     print(f"[backtest] {index}/{len(market_dates)} sessions through {session:%Y-%m-%d}")

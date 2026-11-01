@@ -93,7 +93,10 @@ jobs:
     timeout-minutes: 330
     strategy:
       fail-fast: false
-      max-parallel: 2        # these are network-heavy; don't get rate-limited
+      # All six legs read the same prefetched cache and make no network
+      # calls, so there is nothing left to rate-limit and they can run at
+      # once. Wall clock becomes one leg instead of three sequential pairs.
+      max-parallel: 6
       matrix:
         include:
           - name: baseline-cap25
@@ -138,7 +141,12 @@ jobs:
           BACKTEST_START: ${{ inputs.start_date }}
           BACKTEST_END: ${{ inputs.end_date }}
         run: |
-          args=(--no-fundamentals --output-dir "backtest-results/${{ matrix.name }}" --verbose)
+          # --offline: the prefetch job already downloaded this exact window
+          # into the restored cache. Without it every leg re-downloads ~1.5M
+          # rows it already has, which was most of the previous run's wall
+          # clock and the reason the legs had to be throttled.
+          args=(--no-fundamentals --offline
+                --output-dir "backtest-results/${{ matrix.name }}" --verbose)
           args+=(--start "${BACKTEST_START:-2024-01-02}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
           # shellcheck disable=SC2206

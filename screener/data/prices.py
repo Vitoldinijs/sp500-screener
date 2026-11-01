@@ -281,8 +281,46 @@ def get_prices(
     return merged[merged["date"] <= pd.Timestamp(end)]
 
 
-def to_wide(df: pd.DataFrame, field: str = "close") -> pd.DataFrame:
-    """date-indexed DataFrame, one column per ticker."""
+# A replay pivots the same long frame once per simulated session — four
+# times over, since the pipeline needs close and open while build_metrics
+# needs close and volume again. On a decade of ~500 names that is ~1.9s of
+# the ~3.2s each session costs, spent reshaping data that never changed.
+# Caching is keyed on a token stamped onto the frame, not on id(), because
+# a garbage-collected frame's id can be reused by a different one.
+_WIDE_CACHE: dict = {}
+_WIDE_CACHE_MAX = 12
+
+
+def _frame_token(df: pd.DataFrame) -> str:
+    token = df.attrs.get("_wide_token")
+    if token is None:
+        from uuid import uuid4
+        token = uuid4().hex
+        df.attrs["_wide_token"] = token
+    return token
+
+
+def to_wide(df: pd.DataFrame, field: str = "close",
+            cache: bool = False) -> pd.DataFrame:
+    """date-indexed DataFrame, one column per ticker.
+
+    `cache` is opt-in and meant for a replay, where the same frame is
+    reshaped thousands of times. The result is returned as-is rather than
+    copied, so callers must treat it as read-only; every current caller
+    either slices it (producing a new frame) or only reads.
+    """
     if df.empty:
         return pd.DataFrame()
-    return df.pivot_table(index="date", columns="ticker", values=field, aggfunc="last").sort_index()
+    if not cache:
+        return df.pivot_table(index="date", columns="ticker",
+                              values=field, aggfunc="last").sort_index()
+
+    key = (_frame_token(df), field, len(df))
+    hit = _WIDE_CACHE.get(key)
+    if hit is None:
+        hit = df.pivot_table(index="date", columns="ticker",
+                             values=field, aggfunc="last").sort_index()
+        if len(_WIDE_CACHE) >= _WIDE_CACHE_MAX:
+            _WIDE_CACHE.pop(next(iter(_WIDE_CACHE)))
+        _WIDE_CACHE[key] = hit
+    return hit

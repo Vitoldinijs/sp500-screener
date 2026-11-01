@@ -18,6 +18,12 @@ import pandas as pd
 # Trading-day horizons
 H_1M, H_3M, H_6M, H_12M = 21, 63, 126, 252
 
+# Observations kept for the bounded factors. The longest of them,
+# mom_12m_1m, reads 253 (231 bars plus a 21-bar skip plus one), so 400 is
+# comfortably clear of it while sparing a decade-long replay from walking
+# thousands of rows per ticker to use the last few hundred.
+WINDOW_ROWS = 400
+
 
 def rsi(series: pd.Series, window: int = 14) -> float:
     """Wilder's RSI on the last `window` periods. NaN if not enough data."""
@@ -88,11 +94,30 @@ def price_factors(
     if close.empty:
         return pd.DataFrame()
 
+    # Every factor here looks back a bounded distance: the longest is
+    # mom_12m_1m, which needs 253 observations (231 + a 21-bar skip + 1).
+    # A replay hands in a decade, so each per-ticker dropna/tail walks
+    # thousands of rows to use the last few hundred. Slicing first makes
+    # that work proportional to what is actually read.
+    #
+    # The slice is on ROWS while the factors consume NON-NaN values, so a
+    # column with heavy gaps could lose observations it would otherwise
+    # have had. Those columns — and only those — are recomputed from the
+    # full history, which keeps the result identical rather than
+    # approximately right.
+    full_counts = close.notna().sum()
+
     rows = {}
     for ticker in close.columns:
-        col = close[ticker].dropna()
-        if col.empty:
+        col_full = close[ticker].dropna()
+        if col_full.empty:
             continue
+        # Trimming the DROPPED-NA series (not the raw rows) is exactly
+        # equivalent for every bounded factor: tail(400).tail(50) is
+        # tail(50). RSI and MACD are deliberately excluded — they are
+        # exponentially weighted, so they depend on the entire history and
+        # truncating them shifts the value, which would change rankings.
+        col = col_full.tail(WINDOW_ROWS) if len(col_full) > WINDOW_ROWS else col_full
         last = float(col.iloc[-1])
         ma50 = float(col.tail(50).mean()) if len(col) >= 50 else np.nan
         ma200 = float(col.tail(200).mean()) if len(col) >= 200 else np.nan
@@ -116,10 +141,12 @@ def price_factors(
                 if len(aligned) >= 20:
                     dvol = float(aligned.tail(20).mean())
 
-        rsi14 = rsi(col, 14)
+        rsi14 = rsi(col_full, 14)
         rows[ticker] = {
             "last_close": last,
-            "history_days": int(len(col)),
+            # Counted over the whole history, not the slice, so the
+            # min_history_days filter sees the same number as before.
+            "history_days": int(full_counts.get(ticker, len(col))),
             "mom_1m": _ret(col, H_1M),
             "mom_3m": _ret(col, H_3M),
             "mom_6m": _ret(col, H_6M),
@@ -127,7 +154,7 @@ def price_factors(
             "above_ma50": (last / ma50 - 1.0) if ma50 and not np.isnan(ma50) else np.nan,
             "above_ma200": (last / ma200 - 1.0) if ma200 and not np.isnan(ma200) else np.nan,
             "rsi14": rsi14,
-            "macd_hist": macd_hist(col),
+            "macd_hist": macd_hist(col_full),
             "volatility": vol60,
             "dollar_volume": dvol,
             "dist_52w_high": dist_52w_high,
@@ -162,12 +189,22 @@ def build_metrics(
     fundamentals: pd.DataFrame,
     universe: pd.DataFrame,
     asof: pd.Timestamp | None = None,
+    close_wide: pd.DataFrame | None = None,
+    volume_wide: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Join price factors + fundamentals + sector into one scoring table."""
+    """Join price factors + fundamentals + sector into one scoring table.
+
+    `close_wide`/`volume_wide` let a caller that has already reshaped the
+    price frame hand it over instead of paying for the pivot again. A
+    replay reshapes the same decade thousands of times, so this matters
+    there; a live run leaves them None and nothing changes. Either way
+    price_factors applies `asof` itself, so passing an unclipped frame is
+    safe — it never reads past the as-of date.
+    """
     from .data import prices as price_mod
 
-    close = price_mod.to_wide(prices_long, "close")
-    volume = price_mod.to_wide(prices_long, "volume")
+    close = close_wide if close_wide is not None else price_mod.to_wide(prices_long, "close")
+    volume = volume_wide if volume_wide is not None else price_mod.to_wide(prices_long, "volume")
     pf = price_factors(close, volume, asof=asof)
     if pf.empty:
         return pd.DataFrame()

@@ -52,7 +52,8 @@ def _load_csv(path: Path) -> pd.DataFrame:
 def run_daily(cfg: Config, allow_network: bool = True,
               prices_long: pd.DataFrame | None = None,
               asof: date | None = None,
-              build_report: bool = True) -> dict:
+              build_report: bool = True,
+              replay_cache: bool = False) -> dict:
     ensure_dirs(cfg)
     strat = cfg.strategy
     dcfg = cfg.data
@@ -74,15 +75,26 @@ def run_daily(cfg: Config, allow_network: bool = True,
             allow_network=allow_network,
             asof=asof,
         )
-    elif asof is not None:
+    elif asof is not None and not replay_cache:
         # Caller-supplied frame (backfill / replay): clip it to the as-of date
-        # so a replay can never read bars from its own future.
+        # so a replay can never read bars from its own future. With
+        # replay_cache the clip moves to the wide frames below, so the long
+        # frame keeps its identity and its pivot stays cached.
         prices_long = prices_long[prices_long["date"] <= pd.Timestamp(asof)]
     if prices_long.empty:
         raise RuntimeError("no price data available — aborting without changes")
 
-    close_wide = price_mod.to_wide(prices_long, "close")
-    open_wide = price_mod.to_wide(prices_long, "open")
+    # A replay hands the same long frame back every session, so the pivot
+    # is cached on it and clipping happens on the (cheap) wide result. A
+    # live run passes replay_cache=False and behaves exactly as before.
+    close_wide = price_mod.to_wide(prices_long, "close", cache=replay_cache)
+    open_wide = price_mod.to_wide(prices_long, "open", cache=replay_cache)
+    volume_wide = price_mod.to_wide(prices_long, "volume", cache=replay_cache)
+    if asof is not None:
+        clip = pd.Timestamp(asof)
+        close_wide = close_wide.loc[close_wide.index <= clip]
+        open_wide = open_wide.loc[open_wide.index <= clip]
+        volume_wide = volume_wide.loc[volume_wide.index <= clip]
     data_date = close_wide.index.max()
     _log(f"prices through {data_date:%Y-%m-%d} ({len(close_wide.columns)} tickers)")
 
@@ -149,7 +161,8 @@ def run_daily(cfg: Config, allow_network: bool = True,
     )
 
     # --- score ------------------------------------------------------------
-    metrics = factors.build_metrics(prices_long, fund, uni, asof=data_date)
+    metrics = factors.build_metrics(prices_long, fund, uni, asof=data_date,
+                                    close_wide=close_wide, volume_wide=volume_wide)
     metrics = metrics.drop(index=[bench], errors="ignore")
 
     tilt = macro_fac.macro_tilt(close_wide.drop(columns=[bench], errors="ignore"),
@@ -232,8 +245,13 @@ def run_daily(cfg: Config, allow_network: bool = True,
         portfolio.append_trades(ladder.trades, cfg.path("trades_csv"))
         state.save(cfg.path("portfolio_json"))
 
+        # Clip explicitly rather than relying on the caller. Only the value
+        # at data_date is read today, but handing a point-in-time function a
+        # frame that runs past the simulated date is a look-ahead waiting to
+        # happen the first time someone reads more of the series.
+        bench_long = prices_long[prices_long["date"] <= pd.Timestamp(data_date)]
         bench_series = bmod.benchmark_equity(
-            prices_long, float(strat["start_capital"]),
+            bench_long, float(strat["start_capital"]),
             _first_equity_date(cfg, data_date), bench
         )
         portfolio.append_equity({
