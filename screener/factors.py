@@ -151,6 +151,15 @@ def price_factors(
             "mom_3m": _ret(col, H_3M),
             "mom_6m": _ret(col, H_6M),
             "mom_12m_1m": _ret(col, H_12M - H_1M, skip=H_1M),
+            # Research diagnostics: the 3- and 6-month windows WITHOUT their
+            # most recent month. mom_3m and mom_6m above include it, and the
+            # last month is the one horizon where returns reliably reverse
+            # rather than persist. If that reversal is what is cancelling the
+            # momentum block, these two will show a positive IC where the
+            # unskipped versions show none. Not in any block, so computing
+            # them changes no score.
+            "mom_3m_1m": _ret(col, H_3M - H_1M, skip=H_1M),
+            "mom_6m_1m": _ret(col, H_6M - H_1M, skip=H_1M),
             "above_ma50": (last / ma50 - 1.0) if ma50 and not np.isnan(ma50) else np.nan,
             "above_ma200": (last / ma200 - 1.0) if ma200 and not np.isnan(ma200) else np.nan,
             "rsi14": rsi14,

@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     # trading sessions the price factors warm up on. Sizing the download from
     # the warm-up alone is why the macro block sat unavailable for the first
     # 165 sessions of the last run: the data simply was not there yet.
-    macro_settings = dict(cfg.data.get("macro_factors") or {})
+    macro_settings = dict(cfg.get("macro_factors") or {})
     beta_weeks = int(macro_settings.get("window_weeks", 104))
     trend_weeks = int(macro_settings.get("trend_lookback_weeks", 13))
     macro_days = int(math.ceil((beta_weeks + trend_weeks) * 7)) + 60

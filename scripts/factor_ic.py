@@ -193,6 +193,50 @@ def report_score(df: pd.DataFrame, score: str, horizon: int, label: str) -> dict
             "sample_too_thin_for_inference": bool(thin)}
 
 
+def print_year_matrix(df: pd.DataFrame, horizon: int) -> None:
+    """IC per signal per calendar year, in one grid.
+
+    One composite row per year hides the question that matters for a
+    block that averages out to zero: is it dead throughout, or strongly
+    positive in most years and wiped out by one or two? Momentum is the
+    case in point — 2020 and 2021 held two of the sharpest momentum crashes
+    on record, and an overall zero means something very different if every
+    other year is positive.
+
+    Years with too few sessions to say anything, or signals without data in
+    that year, are left blank rather than printed as noise.
+    """
+    years = sorted(df["data_date"].str.slice(0, 4).unique())
+    signals = ["composite"]
+    signals += sorted(c for c in df.columns if c.startswith("block_"))
+    signals += sorted(c for c in df.columns if c.startswith(("z_", "m_")))
+    signals = [s for s in signals if s in df.columns and df[s].notna().any()]
+
+    year_of = df["data_date"].str.slice(0, 4)
+    print(f"\nIC по годам (пусто — меньше {horizon} сессий данных в году)")
+    print(f"{'сигнал':<22}" + "".join(f"{y:>8}" for y in years)
+          + f"{'знак':>8}")
+    for sig in signals:
+        cells, values = [], []
+        for year in years:
+            ics = ic_series(df[year_of == year], sig)
+            if len(ics) < horizon:
+                cells.append(f"{'':>8}")
+                continue
+            values.append(float(ics.mean()))
+            cells.append(f"{ics.mean():+8.3f}")
+        # How consistently the sign holds across the years that have data:
+        # a real but noisy effect shows up as a majority of one sign even
+        # when no single year reaches significance.
+        if values:
+            overall = np.sign(np.nanmean(values)) or 1.0
+            agree = sum(np.sign(v) == overall for v in values)
+            stable = f"{agree}/{len(values)}"
+        else:
+            stable = ""
+        print(f"{sig:<22}" + "".join(cells) + f"{stable:>8}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -234,6 +278,15 @@ def main(argv: list[str] | None = None) -> int:
     for col in sorted(c for c in df.columns if c.startswith("block_")):
         results[col] = report_score(df, col, args.horizon, col)
 
+    metric_cols = [c for c in df.columns
+                   if c.startswith(("z_", "m_")) and df[c].notna().any()]
+    if metric_cols:
+        print("\nпо метрикам  (z_ — как использует модель, с учётом направления: "
+              "плюс значит работает как задумано;\n"
+              "              m_ — сырые диагностические, не в весах)")
+        for col in sorted(metric_cols):
+            results[col] = report_score(df, col, args.horizon, col)
+
     print("\nдецили по composite: средний избыточный доход и разброс, "
           "% за горизонт")
     prof = decile_profile(df, "composite")
@@ -268,14 +321,20 @@ def main(argv: list[str] | None = None) -> int:
         if wide is not None and wide.shape[1] == DECILES:
             top = wide.iloc[:, -1].dropna()
             spread_series = (wide.iloc[:, -1] - wide.iloc[:, 0]).dropna()
-            t_top, _ = newey_west_tstat(top, lag=args.horizon)
-            t_spread, _ = newey_west_tstat(spread_series, lag=args.horizon)
-            print(f"  D10 против нуля: {top.mean() * 100:+.2f}% "
-                  f"за горизонт | t NW {t_top:+.1f}")
-            print(f"  D10-D1 против нуля: {spread_series.mean() * 100:+.2f}% "
-                  f"| t NW {t_spread:+.1f}")
-            results["top_decile_t"] = float(t_top)
-            results["spread_t"] = float(t_spread)
+            if len(top) < MIN_INDEPENDENT * args.horizon:
+                # Same rule as the IC table: too few independent windows
+                # for a t-statistic to mean anything.
+                print(f"  D10 против нуля: {top.mean() * 100:+.2f}% | t — "
+                      f"(мало данных: {len(top)} сессий)")
+            else:
+                t_top, _ = newey_west_tstat(top, lag=args.horizon)
+                t_spread, _ = newey_west_tstat(spread_series, lag=args.horizon)
+                print(f"  D10 против нуля: {top.mean() * 100:+.2f}% "
+                      f"за горизонт | t NW {t_top:+.1f}")
+                print(f"  D10-D1 против нуля: {spread_series.mean() * 100:+.2f}% "
+                      f"| t NW {t_spread:+.1f}")
+                results["top_decile_t"] = float(t_top)
+                results["spread_t"] = float(t_spread)
 
         if tails_beat_middle and tail_disp > mid_disp * 1.1:
             print("  -> оба края обгоняют середину И разброс на краях шире: "
@@ -288,15 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.by_year and "composite" in df.columns:
-        print("\ncomposite IC по годам")
-        df["year"] = df["data_date"].str.slice(0, 4)
-        for year, group in df.groupby("year"):
-            ics = ic_series(group, "composite")
-            if len(ics) < 20:
-                continue
-            nw_t, _ = newey_west_tstat(ics, lag=args.horizon)
-            print(f"  {year}: IC {ics.mean():+.4f} | t NW {nw_t:+5.1f} "
-                  f"| сессий {len(ics)}")
+        print_year_matrix(df, args.horizon)
 
     print("\nчитать так: t NW по модулю ниже ~2 — сигнала не видно на этой выборке.")
     print("перекрывающиеся окна делают t наив завышенным примерно в sqrt(горизонт) раз.")

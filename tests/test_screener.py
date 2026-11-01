@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from screener import allocation, evaluation, factors, learn, lifecycle, portfolio, scoring, universe  # noqa: E402
+from screener import allocation, evaluation, factors, learn, lifecycle, pipeline, portfolio, scoring, universe  # noqa: E402
 from screener.data import macro as macro_mod  # noqa: E402
 from screener import regime as regime_mod  # noqa: E402
 from screener import macro_factors as macro_fac  # noqa: E402
@@ -1684,6 +1684,116 @@ def test_no_fundamentals_mode_replays_a_date_before_the_first_snapshot():
     # And the report must say so, so the number can never be quoted later as
     # a result for the live strategy.
     assert any("NOT the live strategy" in lim for lim in summary["limitations"])
+
+
+def test_replay_panel_carries_per_metric_scores_with_a_stable_header():
+    """End to end: replay -> ledger -> panel -> report, below block level.
+
+    Two things must hold. The panel must carry each metric's z-score and the
+    diagnostic raw metrics, so a block's IC can be traced to the metrics
+    inside it. And the ledger must keep one header for the whole replay even
+    though the set of z-scores a session produces varies — this file is
+    appended to, and an append does not check column names.
+    """
+    import sys as _sys
+    import tempfile
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+    import factor_ic
+
+    cfg = _cfg()
+    uni = pd.read_csv(cfg.path("universe_csv"))
+    tickers = sorted(set(uni["ticker"].astype(str).str.upper()))[:40] + ["SPY"]
+    prices = _synthetic_price_history(tickers)
+
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "out"
+        summary = bt.run_backtest(
+            ROOT / "config.yml", prices, date(2016, 1, 4), date(2016, 4, 29),
+            out, warmup_sessions=320, no_fundamentals=True,
+        )
+        panel = pd.read_csv(out / "factor_panel.csv.gz")
+
+        # Fixed column set, from the config, present for every row. The
+        # fundamental blocks are removed from the replay's own config in
+        # --no-fundamentals mode, so check the blocks that actually ran.
+        active = summary["configuration"]["factor_weights"]
+        for block in active:
+            for name in cfg["metric_blocks"][block]:
+                assert f"z_{name}" in panel.columns, f"missing z_{name}"
+        for name in cfg["diagnostic_metrics"]:
+            assert f"m_{name}" in panel.columns, f"missing m_{name}"
+
+        # Values landed under the right names: a momentum z-score must track
+        # the momentum block it feeds, and must not look like, say, RSI.
+        live = panel.dropna(subset=["z_mom_3m", "block_momentum"])
+        assert len(live) > 100
+        assert live["z_mom_3m"].corr(live["block_momentum"]) > 0.3
+        # Diagnostic raw returns are returns, not z-scores.
+        assert panel["m_mom_1m"].abs().max() < 5
+
+        # The report runs on it, metric table and year grid included.
+        assert summary["factor_panel"]["rows"] == len(panel)
+        df = factor_ic.load_panel(out / "factor_panel.csv.gz", 21)
+        assert not factor_ic.ic_series(df, "z_mom_12m_1m").empty
+        factor_ic.print_year_matrix(df, 21)
+
+
+def _ledger_scored(tickers, z_macro: bool) -> pd.DataFrame:
+    """A minimal scored table, with or without the macro z-score."""
+    rng = np.random.default_rng(3)
+    n = len(tickers)
+    df = pd.DataFrame({
+        "name": tickers, "sector": "Tech", "last_close": 100.0,
+        "eligible": True, "exclude_reason": "",
+        "rank": np.arange(1, n + 1, dtype=float),
+        "composite": np.linspace(1, -1, n), "blocks_used": 3.0,
+        "missing_fundamentals": 0,
+        "z_mom_3m": rng.normal(size=n), "z_rsi14": rng.normal(size=n),
+        "mom_1m": rng.normal(0, 0.05, n),
+    }, index=pd.Index(tickers, name="ticker"))
+    if z_macro:
+        df["z_macro_tilt"] = rng.normal(size=n)
+    return df
+
+
+def test_ledger_append_keeps_values_under_their_own_columns():
+    """A session missing a z-score must not shift values into its neighbours.
+
+    Exercised through the real ledger writer across two sessions: the first
+    has no macro z-score (as in the first months of a replay, before macro
+    history is long enough), the second has one.
+    """
+    cfg = _cfg()
+    # Top level, as config.yml has it — NOT cfg.data, which is only the
+    # `data:` section. Reading the flag from there is exactly the bug that
+    # would have left a real replay without any per-metric columns.
+    cfg._d["ledger_metric_columns"] = True
+    state = portfolio.PortfolioState.new(10_000.0)
+    tickers = ["AAA", "BBB", "CCC"]
+    with tempfile.TemporaryDirectory() as td:
+        cfg.root = Path(td)
+        (Path(td) / cfg["paths"]["decision_history_csv"]).parent.mkdir(
+            parents=True, exist_ok=True)
+        first = _ledger_scored(tickers, z_macro=False)
+        second = _ledger_scored(tickers, z_macro=True)
+        pipeline._append_decision_history(
+            cfg, first, state, pd.Timestamp("2020-01-02"), None, [], {})
+        pipeline._append_decision_history(
+            cfg, second, state, pd.Timestamp("2020-01-03"), None, [], {})
+        back = pd.read_csv(cfg.path("decision_history_csv"))
+
+    day1 = back[back["data_date"] == "2020-01-02"].set_index("ticker")
+    day2 = back[back["data_date"] == "2020-01-03"].set_index("ticker")
+    # Same columns both days, macro empty on day one and filled on day two.
+    assert day1["z_macro_tilt"].isna().all()
+    assert np.allclose(day2.loc[tickers, "z_macro_tilt"],
+                       second.loc[tickers, "z_macro_tilt"])
+    # And every other value is where it belongs on both days.
+    for frame, src in ((day1, first), (day2, second)):
+        assert np.allclose(frame.loc[tickers, "z_mom_3m"], src.loc[tickers, "z_mom_3m"])
+        assert np.allclose(frame.loc[tickers, "z_rsi14"], src.loc[tickers, "z_rsi14"])
+        assert np.allclose(frame.loc[tickers, "m_mom_1m"], src.loc[tickers, "mom_1m"])
 
 
 def test_replay_reads_macro_from_the_workspace_copy():

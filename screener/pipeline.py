@@ -462,6 +462,52 @@ def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
         })
 
     fresh = pd.DataFrame(records)
+
+    # Per-metric columns, for research replays only. Block means hide which
+    # metric is doing the work — the momentum block came back with an IC of
+    # zero while carrying the largest weight, and a block-level number cannot
+    # say whether six metrics are all dead or two good ones are being
+    # cancelled by four bad ones. The live ledger is committed to git every
+    # day, so this stays off there: ~25 extra columns a session would roughly
+    # double its growth for no operational benefit.
+    if bool(cfg.get("ledger_metric_columns", False)) and not fresh.empty:
+        by_ticker = scored.reindex(fresh["ticker"].to_numpy())
+        # The column set comes from the CONFIG, never from whichever z-scores
+        # happen to exist this session. Which ones exist varies — z_macro_tilt
+        # is absent while macro history is short, a sparse metric is skipped
+        # below five values — and this file is appended to under a header
+        # written once. A row with a different column set would land under
+        # the wrong names without any error.
+        # z_*: exactly what the model consumed — winsorized, sector-neutral
+        # where configured, and multiplied by the configured direction, so
+        # a positive IC always means "this metric works the way we use it".
+        for block_metrics in cfg["metric_blocks"].values():
+            for name in block_metrics:
+                col = f"z_{name}"
+                fresh[col] = (pd.to_numeric(by_ticker[col], errors="coerce").to_numpy()
+                              if col in by_ticker.columns else np.nan)
+        # m_*: raw values of metrics that sit in no block, kept to test
+        # alternatives without changing any score.
+        for name in cfg.get("diagnostic_metrics") or []:
+            fresh[f"m_{name}"] = (pd.to_numeric(by_ticker[name], errors="coerce").to_numpy()
+                                  if name in by_ticker.columns else np.nan)
+
+    # Align every append to the header already on disk. Appending a CSV
+    # does not check column names, so any drift in what a session produces
+    # would silently shift values into the wrong columns.
+    if path.exists():
+        try:
+            header = pd.read_csv(path, nrows=0).columns.tolist()
+        except (ValueError, OSError, pd.errors.ParserError,
+                pd.errors.EmptyDataError):
+            header = []
+        if header:
+            dropped = [c for c in fresh.columns if c not in header]
+            if dropped:
+                _log(f"decision history: {len(dropped)} column(s) not in the "
+                     f"existing header were left out: {', '.join(dropped[:5])}")
+            fresh = fresh.reindex(columns=header)
+
     if not existing.empty and {"data_date", "ticker"}.issubset(existing.columns):
         keys = set(zip(existing["data_date"].astype(str), existing["ticker"].astype(str)))
         fresh = fresh[

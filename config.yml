@@ -139,6 +139,17 @@ metric_blocks:
   technical: [rsi14, macd_hist]
   macro: [macro_tilt]
 
+# Computed every day but in no block, so they change no score. They exist to
+# test alternatives against the live metrics in a research replay:
+#   mom_1m     the last month alone — the horizon where returns reverse
+#   mom_3m_1m  / mom_6m_1m  the 3- and 6-month windows WITHOUT that month
+diagnostic_metrics: [mom_1m, mom_3m_1m, mom_6m_1m]
+
+# Write per-metric z-scores into the decision ledger. Off for the live system
+# (the ledger is committed daily and this roughly doubles its growth); the
+# backtest switches it on in its private copy of this file.
+ledger_metric_columns: false
+
 winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
 
 # ---- Sector-neutral scoring ------------------------------------------------

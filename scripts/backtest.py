@@ -402,18 +402,21 @@ def _copy_replay_inputs(config_path: Path, workspace: Path,
     # never touched, so a variant sweep cannot leave the live strategy
     # altered behind it.
     mutation_notes: list[str] = []
-    if no_fundamentals or overrides:
-        import yaml
-        with open(destination_config, encoding="utf-8") as fh:
-            raw = yaml.safe_load(fh)
-        if no_fundamentals:
-            mutation_notes += _disable_fundamental_blocks(raw)
-        if overrides:
-            mutation_notes += ["override " + n for n in _apply_overrides(raw, overrides)]
-        with open(destination_config, "w", encoding="utf-8") as fh:
-            yaml.safe_dump(raw, fh, sort_keys=False, allow_unicode=True)
-        for note in mutation_notes:
-            print(f"[backtest] {note}")
+    import yaml
+    with open(destination_config, encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh)
+    if no_fundamentals:
+        mutation_notes += _disable_fundamental_blocks(raw)
+    if overrides:
+        mutation_notes += ["override " + n for n in _apply_overrides(raw, overrides)]
+    # A replay always records per-metric z-scores, so the exported factor
+    # panel can say which metric inside a block carries — or cancels — its
+    # signal. Measurement only: it changes no score.
+    raw["ledger_metric_columns"] = True
+    with open(destination_config, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(raw, fh, sort_keys=False, allow_unicode=True)
+    for note in mutation_notes:
+        print(f"[backtest] {note}")
     for key in ("universe_csv", "fundamentals_csv", "universe_history_csv",
                 "macro_csv"):
         relative = Path(raw_cfg["paths"][key])
@@ -472,6 +475,10 @@ def _export_factor_panel(cfg: Config, prices: pd.DataFrame, out_dir: Path) -> in
         "data_date", "ticker", "sector", "eligible", "exclude_reason",
         "rank_percentile", "composite", "blocks_used", "last_close",
     ] + blocks
+    # Per-metric z-scores and diagnostic raw metrics, when the replay wrote
+    # them (see ledger_metric_columns): what lets the report go below the
+    # block level.
+    wanted += [c for c in header if c.startswith(("z_", "m_"))]
     usecols = [c for c in wanted if c in header]
     panel = pd.read_csv(history_path, usecols=usecols,
                         dtype={"data_date": str, "ticker": str,
