@@ -54,6 +54,21 @@ SERIES: tuple[Series, ...] = (
     Series("VIXCLS", "vix", 2),
     Series("DCOILWTICO", "oil_wti", 5),       # weekly revisions early on
     Series("DTWEXBGS", "dollar_index", 5),
+    # Credit stress, two gauges on purpose.
+    #
+    # BAMLH0A0HYM2 is the more sensitive one, but FRED only publishes a
+    # rolling THREE YEARS of it as of April 2026 — an ICE Data Indices
+    # licensing restriction, not a gap we can fetch our way out of. Asking
+    # for 2017 returns 2023 onward and no error, which is how a backtest
+    # ends up silently missing credit for most of its window.
+    #
+    # BAA10Y (Moody's Baa yield over the 10-year Treasury) is public domain
+    # and published in full back to 1986, so it is what the regime layer and
+    # the macro drivers actually read. The two track each other closely;
+    # using one consistently matters more for a replay than the marginal
+    # sensitivity of the other, which would also change definition
+    # mid-window as its licensed history begins.
+    Series("BAA10Y", "baa_spread", 2),
     Series("BAMLH0A0HYM2", "high_yield_spread", 2),
     # Monthly. The lag covers the gap from the month being described to the
     # release, plus room for the first revision.

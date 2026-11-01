@@ -42,6 +42,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+# Ranks-plus-Pearson, already owned by the project. pandas'
+# `corr(method="spearman")` imports scipy, which this project has never
+# depended on: on pandas 2.x that raises ModuleNotFoundError, and the
+# failure surfaces only once a report is being written at the end of an
+# hour-long replay.
+from screener.learn import spearman  # noqa: E402
+
 HORIZON_DEFAULT = 21
 MIN_NAMES = 30          # sessions with a thinner cross-section are skipped
 DECILES = 10
@@ -200,8 +210,8 @@ def main(argv: list[str] | None = None) -> int:
             bar = "#" * int(abs(v) * 400)
             print(f"  D{int(d) + 1:<2} {v * 100:+7.2f}%  {bar}")
         spread = float(prof.iloc[-1] - prof.iloc[0])
-        rho = float(pd.Series(prof.values).corr(
-            pd.Series(range(len(prof))), method="spearman"))
+        rho = spearman(pd.Series(prof.to_numpy()),
+                       pd.Series(range(len(prof)), dtype=float), minimum_n=3)
         print(f"  D10-D1 спред: {spread * 100:+.2f}% | монотонность (rho) {rho:+.2f}")
         results["decile_spread"] = spread
         results["decile_monotonicity"] = rho

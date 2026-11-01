@@ -91,8 +91,25 @@ def _vix_score(vix_hist: pd.Series) -> float:
     return _clip01((35.0 - last) / 20.0)
 
 
+CREDIT_SERIES = ("baa_spread", "high_yield_spread")
+
+
+def _credit_history(macro_frame, asof: date) -> pd.Series:
+    """The first credit spread with enough history to score.
+
+    `baa_spread` comes first because FRED publishes it in full, while the
+    high-yield series is restricted to a rolling three-year window; the
+    fallback only matters if FRED ever drops the Moody's series too.
+    """
+    for label in CREDIT_SERIES:
+        hist = macro_mod.history(macro_frame, label, asof)
+        if len(pd.to_numeric(hist, errors="coerce").dropna()) >= 60:
+            return hist
+    return pd.Series(dtype=float)
+
+
 def _credit_score(spread_hist: pd.Series) -> float:
-    """High-yield spread against its own two-year range.
+    """Credit spread against its own two-year range.
 
     Absolute spread levels drift with the rate environment, so this is scored
     relative to the series' own recent history rather than a fixed number.
@@ -134,8 +151,7 @@ def assess(cfg, benchmark_close: pd.Series | None,
         "trend": _trend_score(benchmark_close, trend_window)
         if benchmark_close is not None else float("nan"),
         "volatility": _vix_score(macro_mod.history(macro_frame, "vix", asof)),
-        "credit": _credit_score(
-            macro_mod.history(macro_frame, "high_yield_spread", asof)),
+        "credit": _credit_score(_credit_history(macro_frame, asof)),
         "curve": _curve_score(
             macro_mod.history(macro_frame, "yield_curve_10y_2y", asof)),
     }

@@ -1864,6 +1864,10 @@ def test_one_short_driver_does_not_disable_the_whole_macro_block():
     spreads only from 2023-10-31 while the others went back years, which cut
     the fit window from 159 weeks to 30 — below min_observations — and
     disabled the macro block entirely. Three sweeps ran with it inert.
+
+    The credit driver has since moved to the Moody's Baa series, which FRED
+    publishes in full, so this particular short series is no longer in use.
+    The guard still matters: any driver can start late or be withdrawn.
     """
     weeks = pd.date_range("2022-01-07", periods=120, freq="W-FRI")
     rng = np.random.default_rng(4)
@@ -1955,6 +1959,65 @@ def test_breaker_still_fires_on_a_fresh_drawdown_after_release():
     events = ladder._update_drawdown(5_500.0, date(2025, 3, 1))
     assert any(e["event"] == "drawdown_protection_activated" for e in events)
     assert state.drawdown_paused
+
+
+def _credit_macro(baa: list[float] | None, hy: list[float] | None):
+    """Macro frame carrying either or both credit spreads."""
+    rows = []
+    for series_id, values in (("BAA10Y", baa), ("BAMLH0A0HYM2", hy)):
+        if not values:
+            continue
+        dates = pd.date_range("2024-01-01", periods=len(values), freq="D")
+        rows += [{"date": d, "series_id": series_id, "value": v}
+                 for d, v in zip(dates, values)]
+    return macro_mod.normalise(pd.DataFrame(
+        rows or [], columns=["date", "series_id", "value"]
+    ))
+
+
+def test_credit_regime_prefers_the_series_published_in_full():
+    """FRED serves only a rolling 3 years of the high-yield spread.
+
+    An ICE licensing restriction, effective April 2026: requesting 2017
+    returns 2023 onward with no error, so a long replay loses credit for
+    most of its window without anything looking broken. The Moody's Baa
+    series is public domain and complete, so it is what gets read — and the
+    two must not be allowed to disagree silently.
+    """
+    rng = np.random.default_rng(5)
+    # Baa says stress (latest print above its own range); HY says calm.
+    baa = list(rng.uniform(1.5, 3.0, 599)) + [3.4]
+    hy = list(rng.uniform(3.0, 7.0, 119)) + [2.4]
+    asof = date(2026, 1, 1)
+    cfg = _cfg()
+
+    both = regime_mod.assess(cfg, None, _credit_macro(baa, hy), asof)
+    assert both.components["credit"] < 0.25, (
+        "credit was scored from the high-yield series, which only covers "
+        f"a rolling window: got {both.components['credit']}"
+    )
+
+    # With Baa gone the high-yield series is the fallback, not dead weight.
+    hy_only = regime_mod.assess(cfg, None, _credit_macro(None, hy), asof)
+    assert hy_only.components["credit"] > 0.75
+    assert not any("credit" in note for note in hy_only.notes)
+
+    # Neither available: credit drops out, and the blend renormalises
+    # rather than treating absent credit as stress.
+    neither = regime_mod.assess(cfg, None, _credit_macro(None, None), asof)
+    assert not np.isfinite(neither.components["credit"])
+    assert any("credit" in note for note in neither.notes)
+
+
+def test_macro_drivers_use_a_credit_series_with_complete_history():
+    """The beta regression needs every driver present across the window."""
+    assert "baa_spread" in macro_fac.DRIVERS
+    assert "high_yield_spread" not in macro_fac.DRIVERS, (
+        "a driver restricted to a rolling 3-year window changes definition "
+        "mid-replay and takes the whole design matrix down before that"
+    )
+    assert "baa_spread" in macro_mod.BY_LABEL
+    assert macro_mod.BY_LABEL["baa_spread"].series_id == "BAA10Y"
 
 
 def _ic_panel_fixture(sessions: int = 320, tickers: int = 160):
@@ -2094,9 +2157,11 @@ def test_factor_panel_decile_profile_is_monotone_for_a_monotone_signal():
         profile = factor_ic.decile_profile(df, "composite")
 
     assert len(profile) == 10
-    rho = pd.Series(profile.to_numpy()).corr(
-        pd.Series(range(len(profile))), method="spearman"
-    )
+    # learn.spearman, not pandas' method="spearman", which imports scipy —
+    # a dependency this project does not declare and the runner will not have.
+    rho = learn.spearman(pd.Series(profile.to_numpy()),
+                         pd.Series(range(len(profile)), dtype=float),
+                         minimum_n=3)
     assert rho > 0.9, f"monotone signal gave a non-monotone profile: rho={rho}"
     assert profile.iloc[-1] > profile.iloc[0]
 

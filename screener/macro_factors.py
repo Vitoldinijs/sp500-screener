@@ -57,7 +57,11 @@ DRIVERS: dict[str, str] = {
     "treasury_2y": "diff",
     "oil_wti": "logret",
     "dollar_index": "logret",
-    "high_yield_spread": "diff",
+    # Credit: the Moody's Baa series, not the high-yield one. FRED restricts
+    # the latter to a rolling three-year window, which once cut the usable
+    # regression window from 159 weeks to 30 and disabled this whole block.
+    # See the note beside the series definitions in data/macro.py.
+    "baa_spread": "diff",
 }
 
 TREND_CLIP = 2.0        # driver trend capped at +/- 2 of its own sigma
