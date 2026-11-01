@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-01T12:41:32+00:00",
+  "generated_at": "2026-11-01T13:57:43+00:00",
   "meta": {
     "run_time": "2026-11-01 12:25 UTC",
     "data_date": "2026-10-30",
@@ -669,6 +669,22 @@
   "learning": {
     "enabled": true,
     "mode": "lifecycle",
-    "recent_decisions": []
+    "recent_decisions": [
+      {
+        "run_date": "2026-11-01",
+        "mode": "lifecycle",
+        "decision": "skipped",
+        "reason": "only 0 eligible linked closed trades; need at least 40",
+        "weights_before": "{\"earnings\": 0.11, \"growth\": 0.09, \"macro\": 0.08, \"momentum\": 0.28, \"quality\": 0.14, \"risk\": 0.06, \"technical\": 0.08, \"value\": 0.16}",
+        "weights_after": "{\"earnings\": 0.11, \"growth\": 0.09, \"macro\": 0.08, \"momentum\": 0.28, \"quality\": 0.14, \"risk\": 0.06, \"technical\": 0.08, \"value\": 0.16}",
+        "sample_key": "0|none|none|none",
+        "eligible_trades": 0,
+        "training_n": 0,
+        "validation_n": 0,
+        "validation_cutoff": null,
+        "latest_exit_date": null,
+        "logged_at": "2026-11-01T13:57:43"
+      }
+    ]
   }
 }
