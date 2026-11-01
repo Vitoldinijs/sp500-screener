@@ -34,6 +34,19 @@ from screener.data import edgar as edgar_mod  # noqa: E402
 TOL = 1e-6
 
 
+def _weights_sum_tol(weights) -> float:
+    """How far renormalised weights may sum from 1 and still be correct.
+
+    The backtest rounds each renormalised weight to 6 decimals, so each
+    carries up to 5e-7 of rounding residue. Seven weights can land a full
+    1e-6 off — exactly on a 1e-6 tolerance, where the outcome then depends
+    on how the interpreter adds floats: Python 3.12+ uses compensated
+    summation and lands just under, 3.11 adds naively and lands just over.
+    CI runs 3.11, so that test failed there and passed everywhere else.
+    """
+    return len(weights) * 5e-7 + 1e-12
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -1235,7 +1248,12 @@ def _run_all() -> int:
             print(f"  PASS  {name}")
             passed += 1
         except AssertionError as e:
-            print(f"  FAIL  {name}\n        {e}")
+            # A bare `assert` carries no message, so name the failing line —
+            # otherwise a CI log says only that something failed, somewhere.
+            import traceback
+            frame = traceback.extract_tb(e.__traceback__)[-1]
+            print(f"  FAIL  {name}\n        {e or '(no message)'}"
+                  f"\n        at line {frame.lineno}: {frame.line}")
             failed.append(name)
         except Exception as e:  # noqa: BLE001
             import traceback
@@ -1612,7 +1630,8 @@ def test_no_fundamentals_mode_zero_weights_fundamental_blocks():
     weights = raw["factor_weights"]
     for block in bt.FUNDAMENTAL_BLOCKS:
         assert block not in weights, f"{block} still carries weight"
-    assert abs(sum(weights.values()) - 1.0) < 1e-6, "weights must renormalise to 1"
+    assert abs(sum(weights.values()) - 1.0) <= _weights_sum_tol(weights), \
+        "weights must renormalise to 1"
     assert set(weights) == {"momentum", "risk", "technical", "macro"}
     # Filters that need fundamental fields must not silently exclude the
     # whole universe once those fields are unavailable.
@@ -2628,7 +2647,8 @@ def test_replay_on_reconstructed_fundamentals_uses_them_without_lookahead():
     assert conf["fundamentals_source"] == "sec-edgar"
     assert "earnings" not in conf["factor_weights"]
     assert {"value", "quality", "growth"} <= set(conf["factor_weights"])
-    assert abs(sum(conf["factor_weights"].values()) - 1.0) < 1e-6
+    assert (abs(sum(conf["factor_weights"].values()) - 1.0)
+            <= _weights_sum_tol(conf["factor_weights"]))
     assert any("SEC XBRL" in lim for lim in summary["limitations"])
     # The fundamental blocks scored on dates no live snapshot covers.
     assert panel["block_value"].notna().mean() > 0.5
