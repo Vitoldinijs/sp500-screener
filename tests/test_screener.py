@@ -1961,6 +1961,49 @@ def test_breaker_still_fires_on_a_fresh_drawdown_after_release():
     assert state.drawdown_paused
 
 
+def test_absent_macro_block_reports_which_gate_closed():
+    """"Unavailable" alone is useless; every bail-out must name its cause."""
+    empty = macro_mod.normalise(pd.DataFrame(columns=["date", "series_id", "value"]))
+    got = macro_fac.macro_tilt(pd.DataFrame(), empty, date(2026, 1, 1), {})
+    assert got.empty
+    assert got.attrs.get("unavailable_reason"), "no reason reported"
+
+    # Every ticker missing at least one week is the quiet one: the
+    # cross-section clears the observation bar and still yields no betas.
+    weeks = pd.date_range("2024-01-05", periods=90, freq="W-FRI")
+    rng = np.random.default_rng(8)
+    changes = pd.DataFrame(
+        {"oil_wti": rng.normal(0, 0.03, len(weeks)),
+         "treasury_10y": rng.normal(0, 0.08, len(weeks))}, index=weeks)
+    days = pd.bdate_range("2023-12-01", weeks[-1])
+    close = pd.DataFrame(
+        {f"T{i:02d}": 100.0 * np.exp(np.cumsum(rng.normal(0, 0.01, len(days))))
+         for i in range(12)}, index=days)
+    # Blank a WHOLE week per column, a different one each time. A single
+    # missing day costs nothing: the weekly resample takes the last
+    # non-missing print, so only a fully absent week becomes a gap — which
+    # is worth knowing in itself, and is asserted as a control below.
+    iso_weeks = close.index.isocalendar().week.to_numpy()
+    distinct = sorted(set(iso_weeks))[5:5 + len(close.columns)]
+    holed = close.copy()
+    for col, week in zip(holed.columns, distinct):
+        holed.loc[iso_weeks == week, col] = np.nan
+
+    betas = macro_fac.estimate_betas(holed, changes, window_weeks=104, min_obs=60)
+    assert betas.empty, "every ticker has a gap, so there is nothing to fit"
+    reason = betas.attrs.get("unavailable_reason", "")
+    assert "gap-free" in reason, f"unexpected reason: {reason!r}"
+
+    # Control: holes in a few names must cost only those names.
+    few = close.copy()
+    for col, week in zip(list(few.columns)[:3], distinct):
+        few.loc[iso_weeks == week, col] = np.nan
+    partial = macro_fac.estimate_betas(few, changes, window_weeks=104, min_obs=60)
+    assert len(partial) == len(close.columns) - 3, (
+        "a gap in one name must not cost the others their betas"
+    )
+
+
 def _credit_macro(baa: list[float] | None, hy: list[float] | None):
     """Macro frame carrying either or both credit spreads."""
     rows = []

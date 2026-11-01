@@ -249,6 +249,11 @@ jobs:
         if: always() && hashFiles('backtest-results/factor-ic/factor_panel.csv.gz') != ''
         run: |
           panel=backtest-results/factor-ic/factor_panel.csv.gz
+          # tee, not plain redirection: the step summary renders nicely but
+          # is not retrievable through the REST API, and the artifact holding
+          # the panel is served from blob storage this environment cannot
+          # reach. A report that exists only where it cannot be read is no
+          # report, so it goes to the job log as well.
           {
             echo '## Does the ranking predict returns?'
             echo ''
@@ -261,7 +266,7 @@ jobs:
             echo '```'
             python scripts/factor_ic.py "$panel" --horizon 63
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Summarise the replay itself
         if: always() && hashFiles('backtest-results/factor-ic/summary.json') != ''
@@ -272,7 +277,7 @@ jobs:
             echo '```json'
             cat backtest-results/factor-ic/summary.json
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload panel and report
         if: always() && hashFiles('backtest-results/factor-ic/summary.json') != ''

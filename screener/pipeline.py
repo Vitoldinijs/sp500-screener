@@ -49,6 +49,11 @@ def _load_csv(path: Path) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # DAILY
 # ---------------------------------------------------------------------------
+# Last reported cause of an absent macro block, so a replay logs each
+# distinct reason once instead of once per simulated session.
+_LAST_MACRO_REASON: str | None = None
+
+
 def run_daily(cfg: Config, allow_network: bool = True,
               prices_long: pd.DataFrame | None = None,
               asof: date | None = None,
@@ -168,9 +173,19 @@ def run_daily(cfg: Config, allow_network: bool = True,
 
     tilt = macro_fac.macro_tilt(close_wide.drop(columns=[bench], errors="ignore"),
                                 macro_frame, asof_date, cfg)
+    # Say WHY the macro block is absent, but only when the answer changes. A
+    # replay hits this path once per simulated session, so logging every time
+    # buries the run in thousands of identical lines — which is how the
+    # reason went unread the first time. One line per distinct cause.
+    global _LAST_MACRO_REASON
     if tilt.empty:
-        _log("macro sensitivities unavailable; composite renormalises without them")
+        reason = str(tilt.attrs.get("unavailable_reason") or "reason not reported")
+        if reason != _LAST_MACRO_REASON:
+            _log(f"macro sensitivities unavailable: {reason}; "
+                 "composite renormalises without them")
+            _LAST_MACRO_REASON = reason
     else:
+        _LAST_MACRO_REASON = None
         metrics = metrics.join(tilt, how="left")
         _log(f"macro tilt for {int(tilt['macro_tilt'].notna().sum())} names")
 

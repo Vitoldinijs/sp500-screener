@@ -148,6 +148,21 @@ def _beta_cache_key(close_wide: pd.DataFrame, changes: pd.DataFrame,
     )
 
 
+def _unavailable(reason: str) -> pd.DataFrame:
+    """An empty result that says why it is empty.
+
+    An absent macro block is not an error — the composite renormalises over
+    the blocks it has — so this path is silent by design. That silence cost
+    a full replay once already: the block sat inert for 167 sessions and the
+    log said only "unavailable", which is true of a licensing restriction, a
+    short price history and a failed solve alike. The reason rides along on
+    the frame so the caller can report which gate actually closed.
+    """
+    out = pd.DataFrame()
+    out.attrs["unavailable_reason"] = reason
+    return out
+
+
 def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
                    window_weeks: int = 104, min_obs: int = 60) -> pd.DataFrame:
     """Multivariate betas of weekly stock returns on weekly driver changes.
@@ -156,7 +171,7 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     every stock, (X'X)^-1 X'Y gives all 500 name's betas in a single solve.
     """
     if close_wide is None or close_wide.empty or changes is None or changes.empty:
-        return pd.DataFrame()
+        return _unavailable("no price or driver data")
 
     key = _beta_cache_key(close_wide, changes, window_weeks, min_obs)
     hit = _BETA_CACHE.get(key)
@@ -175,7 +190,9 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     coverage = changes.notna().sum()
     usable = [c for c in changes.columns if coverage.get(c, 0) >= min_obs]
     if not usable:
-        return pd.DataFrame()
+        return _unavailable(
+            f"every driver has under {min_obs} weekly observations "
+            f"(best: {int(coverage.max()) if len(coverage) else 0})")
     if len(usable) < len(changes.columns):
         short = sorted(set(changes.columns) - set(usable))
         print(f"[macro] dropping drivers with under {min_obs} weekly "
@@ -184,7 +201,9 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     X_all = changes[usable].dropna()
     idx = rets.index.intersection(X_all.index)
     if len(idx) < min_obs:
-        return pd.DataFrame()
+        return _unavailable(
+            f"only {len(idx)} weeks where prices and all drivers overlap, "
+            f"need {min_obs} (prices {len(rets)}, drivers {len(X_all)})")
     idx = idx[-window_weeks:]
     X = X_all.loc[idx]
     Y = rets.loc[idx]
@@ -197,13 +216,16 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     Y = Y[complete]
     keep = Y.dropna(axis=1, how="any")
     if keep.empty:
-        return pd.DataFrame()
+        return _unavailable(
+            f"no ticker has a gap-free {len(idx)}-week return history "
+            f"({len(complete)} of {rets.shape[1]} cleared the {min_obs}-week "
+            "bar, but every one of them is missing at least one week)")
 
     design = np.column_stack([np.ones(len(X)), X.to_numpy(dtype=float)])
     try:
         coef, *_ = np.linalg.lstsq(design, keep.to_numpy(dtype=float), rcond=None)
     except np.linalg.LinAlgError:
-        return pd.DataFrame()
+        return _unavailable("the least-squares solve did not converge")
 
     betas = pd.DataFrame(
         coef[1:].T, index=keep.columns, columns=[f"beta_{c}" for c in X.columns]
@@ -229,15 +251,17 @@ def macro_tilt(close_wide: pd.DataFrame, macro_frame: pd.DataFrame,
 
     changes = driver_changes(macro_frame, asof)
     if changes.empty:
-        return pd.DataFrame()
+        return _unavailable("no macro driver history published by this date")
     trends = driver_trends(changes, lookback_weeks=lookback)
     if not trends:
-        return pd.DataFrame()
+        return _unavailable(
+            f"no driver has the {lookback + 5} weekly changes a trend needs "
+            f"(longest: {int(changes.notna().sum().max())})")
 
     betas = estimate_betas(close_wide, changes[list(trends)],
                            window_weeks=window_weeks, min_obs=min_obs)
     if betas.empty:
-        return pd.DataFrame()
+        return _unavailable(betas.attrs.get("unavailable_reason", "no betas"))
 
     tilt = pd.Series(0.0, index=betas.index)
     for driver, trend in trends.items():
