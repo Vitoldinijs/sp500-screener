@@ -179,7 +179,14 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
         return hit
 
     weekly_px = close_wide.sort_index().resample("W-FRI").last()
-    rets = np.log(weekly_px.where(weekly_px > 0)).diff()
+    # The first row of a diff is NaN for EVERY ticker. Whenever the price
+    # history is shorter than the window, that row sits inside it, and the
+    # gap-free filter below then drops all 475 names at once — which is
+    # what kept the macro block off for the first 167 sessions of the 2020
+    # replay, until the history outgrew the window on 2020-08-28. It went
+    # unseen in testing because synthetic prices and drivers started in the
+    # same week, so the drivers' own first diff removed the row by accident.
+    rets = np.log(weekly_px.where(weekly_px > 0)).diff().dropna(how="all")
 
     # Drop drivers too short to support a fit BEFORE dropping rows. The
     # design matrix needs every driver present in a week, so one

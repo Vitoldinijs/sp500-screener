@@ -2091,6 +2091,32 @@ def test_breaker_still_fires_on_a_fresh_drawdown_after_release():
     assert state.drawdown_paused
 
 
+def test_macro_betas_work_when_drivers_start_before_prices():
+    """The 2020 replay's case: drivers from 2017, prices only from 2018-08.
+
+    Price history shorter than the 104-week window put the all-NaN first
+    row of weekly returns inside the window, and the gap-free filter
+    dropped every ticker. With 70+ weeks of overlap (above the 60-week
+    minimum) the betas must be estimated.
+    """
+    rng = np.random.default_rng(31)
+    weeks = pd.date_range("2017-08-11", "2020-01-03", freq="W-FRI")
+    changes = pd.DataFrame({
+        "oil_wti": rng.normal(0, 0.03, len(weeks)),
+        "treasury_10y": rng.normal(0, 0.08, len(weeks)),
+    }, index=weeks).iloc[1:]
+    days = pd.bdate_range("2018-08-27", "2020-01-03")     # starts a year later
+    close = pd.DataFrame(
+        {f"T{i:02d}": 100.0 * np.exp(np.cumsum(rng.normal(0, 0.01, len(days))))
+         for i in range(20)}, index=days)
+    overlap = len(close.resample("W-FRI").last()) - 1
+    assert 60 <= overlap < 104, overlap      # the exact regime that failed
+
+    betas = macro_fac.estimate_betas(close, changes, window_weeks=104, min_obs=60)
+    assert not betas.empty, betas.attrs.get("unavailable_reason")
+    assert len(betas) == 20
+
+
 def test_absent_macro_block_reports_which_gate_closed():
     """"Unavailable" alone is useless; every bail-out must name its cause."""
     empty = macro_mod.normalise(pd.DataFrame(columns=["date", "series_id", "value"]))
