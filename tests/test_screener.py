@@ -1891,6 +1891,72 @@ def test_one_short_driver_does_not_disable_the_whole_macro_block():
     assert len(betas) == 30
 
 
+def test_drawdown_breaker_cannot_latch_forever():
+    """The breaker must be able to release; otherwise it is a one-way valve.
+
+    Found in the 2024-2026 replay: the breaker latched on 2025-02-28 and
+    never released, so the last 420 of 711 sessions opened no positions at
+    all. The cause is circular — the breaker blocks the buying the book
+    needs to recover, positions keep exiting on signal weakness and are not
+    replaced, equity drifts to cash, and the drawdown can never fall back
+    within resume_below of a peak the book can no longer reach.
+    """
+    cfg = _cfg()
+    cfg.strategy["drawdown_pause_max_sessions"] = 10
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+
+    # Deep drawdown with no recovery, exactly the shape that deadlocked.
+    state.peak_equity = 10_000.0
+    events = ladder._update_drawdown(7_000.0, date(2025, 1, 2))
+    assert any(e["event"] == "drawdown_protection_activated" for e in events)
+    assert state.drawdown_paused
+
+    released = None
+    for i in range(1, 30):
+        state.bar_count += 1
+        got = ladder._update_drawdown(7_000.0, date(2025, 2, 1))
+        if any(e["event"] == "drawdown_protection_resumed" for e in got):
+            released = i
+            break
+    assert released is not None, "the breaker never released — still a deadlock"
+    assert not state.drawdown_paused
+    assert released >= 10, "released before the cooling-off period elapsed"
+
+    # The breaker's reference is reset on a timed release, or it would
+    # re-trip immediately against the same unreachable peak.
+    state.bar_count += 1
+    again = ladder._update_drawdown(7_000.0, date(2025, 2, 2))
+    assert not any(e["event"] == "drawdown_protection_activated" for e in again)
+    assert not state.drawdown_paused
+
+    # Reported drawdown still measures the true all-time peak.
+    assert abs(state.peak_equity - 10_000.0) < TOL
+    assert abs(state.current_drawdown_pct - 0.30) < 1e-6
+
+
+def test_breaker_still_fires_on_a_fresh_drawdown_after_release():
+    """A timed release must not disarm the breaker permanently."""
+    cfg = _cfg()
+    cfg.strategy["drawdown_pause_max_sessions"] = 5
+    state = portfolio.PortfolioState.new(10_000.0)
+    ladder = portfolio.Ladder(cfg, state)
+    state.peak_equity = 10_000.0
+
+    ladder._update_drawdown(7_500.0, date(2025, 1, 2))
+    assert state.drawdown_paused
+    for _ in range(6):
+        state.bar_count += 1
+        ladder._update_drawdown(7_500.0, date(2025, 1, 10))
+    assert not state.drawdown_paused, "should have released on the timer"
+
+    # A new 25% fall from the post-release reference must trip it again.
+    state.bar_count += 1
+    events = ladder._update_drawdown(5_500.0, date(2025, 3, 1))
+    assert any(e["event"] == "drawdown_protection_activated" for e in events)
+    assert state.drawdown_paused
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

@@ -52,6 +52,16 @@ class PortfolioState:
     current_drawdown_pct: float = 0.0
     drawdown_paused: bool = False
     drawdown_pause_date: str | None = None
+    # Reference the BREAKER measures against, kept separate from
+    # peak_equity so reported drawdown stays the true all-time figure
+    # while the breaker can be given a fresh reference after a timed
+    # release. 0 means "fall back to peak_equity".
+    drawdown_breaker_peak: float = 0.0
+    # None, not 0: a pause can legitimately begin on bar 0, so a falsy
+    # sentinel cannot distinguish "paused at the very start" from "never
+    # paused". A state saved before this field existed also loads as None
+    # and is adopted on the next update rather than looking 60 bars stale.
+    drawdown_pause_bar: int | None = None
 
     # -- persistence -------------------------------------------------------
     @classmethod
@@ -201,6 +211,11 @@ class Ladder:
             resume_below if np.isfinite(resume_below) else 0.12, 0.0, trigger
         ))
 
+        try:
+            max_pause = int(self.cfg.strategy.get("drawdown_pause_max_sessions", 60))
+        except (TypeError, ValueError):
+            max_pause = 60
+
         peak = float(self.s.peak_equity or 0.0)
         if not np.isfinite(peak) or peak <= 0:
             peak = max(float(self.s.start_capital), equity)
@@ -210,26 +225,66 @@ class Ladder:
         drawdown = max(0.0, (peak - equity) / peak) if peak > 0 else 0.0
         self.s.current_drawdown_pct = round(float(drawdown), 6)
 
+        # The breaker measures against its own reference. Normally that is
+        # the all-time peak, but a timed release resets it to the equity at
+        # the moment of release — otherwise the breaker would re-trip on the
+        # very next bar against a peak the book can no longer reach.
+        breaker_peak = float(self.s.drawdown_breaker_peak or 0.0)
+        if not np.isfinite(breaker_peak) or breaker_peak <= 0:
+            breaker_peak = peak
+        breaker_peak = max(breaker_peak, equity)
+        self.s.drawdown_breaker_peak = round(breaker_peak, 6)
+        breaker_drawdown = (max(0.0, (breaker_peak - equity) / breaker_peak)
+                            if breaker_peak > 0 else 0.0)
+
         events = []
         if trigger <= 0 and self.s.drawdown_paused:
             self.s.drawdown_paused = False
             self.s.drawdown_pause_date = None
             events.append({"event": "drawdown_protection_resumed",
                            "reason": "circuit breaker disabled"})
-        elif self.s.drawdown_paused and drawdown <= resume_below:
+        elif self.s.drawdown_paused and breaker_drawdown <= resume_below:
             self.s.drawdown_paused = False
             self.s.drawdown_pause_date = None
+            self.s.drawdown_pause_bar = None
             events.append({
                 "event": "drawdown_protection_resumed",
-                "drawdown_pct": round(drawdown, 6),
+                "drawdown_pct": round(breaker_drawdown, 6),
                 "resume_below_pct": resume_below,
             })
-        elif not self.s.drawdown_paused and trigger > 0 and drawdown >= trigger:
+        elif (self.s.drawdown_paused and max_pause > 0
+              and self.s.drawdown_pause_bar is None):
+            # Legacy state paused before this field existed: start the clock
+            # now instead of releasing immediately on an unknown age.
+            self.s.drawdown_pause_bar = int(self.s.bar_count)
+        elif (self.s.drawdown_paused and max_pause > 0
+              and self.s.drawdown_pause_bar is not None
+              and self.s.bar_count - self.s.drawdown_pause_bar >= max_pause):
+            # Timed release. Without it the breaker deadlocks: it blocks the
+            # buying the book needs to climb back, positions keep exiting on
+            # signal weakness and are not replaced, so equity drifts toward
+            # cash and can never return to within resume_below of the peak.
+            # In the 2024-2026 replay it latched on 2025-02-28 and never
+            # released, freezing entries for the last 420 of 711 sessions.
+            held = self.s.bar_count - self.s.drawdown_pause_bar
+            self.s.drawdown_paused = False
+            self.s.drawdown_pause_date = None
+            self.s.drawdown_pause_bar = None
+            self.s.drawdown_breaker_peak = round(equity, 6)
+            events.append({
+                "event": "drawdown_protection_resumed",
+                "reason": "cooling-off period elapsed",
+                "sessions_paused": int(held),
+                "drawdown_pct": round(breaker_drawdown, 6),
+                "breaker_peak_reset_to": round(equity, 2),
+            })
+        elif not self.s.drawdown_paused and trigger > 0 and breaker_drawdown >= trigger:
             self.s.drawdown_paused = True
             self.s.drawdown_pause_date = trade_date.isoformat()
+            self.s.drawdown_pause_bar = int(self.s.bar_count)
             events.append({
                 "event": "drawdown_protection_activated",
-                "drawdown_pct": round(drawdown, 6),
+                "drawdown_pct": round(breaker_drawdown, 6),
                 "trigger_pct": trigger,
                 "equity": round(equity, 2),
             })

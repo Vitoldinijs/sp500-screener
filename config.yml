@@ -31,6 +31,13 @@ strategy:
                                  # MINIMUM number of holdings: 25% -> at least 4.
   max_portfolio_drawdown_pct: 0.20 # pause new buys after a 20% drawdown from peak equity
   drawdown_resume_below_pct: 0.12 # resume new buys only after drawdown recovers to 12% or less
+  drawdown_pause_max_sessions: 60 # hard cap on how long the breaker may stay
+                                   # latched. Without it the breaker deadlocks:
+                                   # it blocks the buying needed to recover, so
+                                   # the drawdown never clears and entries stay
+                                   # frozen forever. Seen in the 2024-2026
+                                   # replay — latched 2025-02-28, never released,
+                                   # 420 of 711 sessions with no entries.
   max_sector_pct_equity: 0.50   # raised with the position cap: at 25% per name a
                                  # 25% sector cap would have allowed only one
                                  # holding per sector, forcing 4 names into 4
