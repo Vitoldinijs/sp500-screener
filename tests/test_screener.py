@@ -1856,6 +1856,41 @@ def test_outcome_ledger_is_identical_whether_rebuilt_once_or_every_session():
         assert a.iloc[0]["feature_link_status"] in ("linked", "linked_reconstructed")
 
 
+def test_one_short_driver_does_not_disable_the_whole_macro_block():
+    """A late-starting series must cost its own column, not every column.
+
+    The design matrix needs all drivers present in a week, so dropna() on
+    the changes frame intersects their histories. FRED returned high-yield
+    spreads only from 2023-10-31 while the others went back years, which cut
+    the fit window from 159 weeks to 30 — below min_observations — and
+    disabled the macro block entirely. Three sweeps ran with it inert.
+    """
+    weeks = pd.date_range("2022-01-07", periods=120, freq="W-FRI")
+    rng = np.random.default_rng(4)
+    changes = pd.DataFrame({
+        "oil_wti": rng.normal(0, 0.03, len(weeks)),
+        "treasury_10y": rng.normal(0, 0.08, len(weeks)),
+        # Present only for the last 20 weeks, as a late-starting series is.
+        "high_yield_spread": [np.nan] * (len(weeks) - 20) + list(
+            rng.normal(0, 0.1, 20)),
+    }, index=weeks)
+
+    days = pd.bdate_range("2021-12-01", weeks[-1])
+    close = pd.DataFrame({
+        f"T{i:02d}": 100.0 * np.exp(np.cumsum(rng.normal(0.0004, 0.013, len(days))))
+        for i in range(30)
+    }, index=days)
+
+    betas = macro_fac.estimate_betas(close, changes, window_weeks=104,
+                                     min_obs=60)
+    assert not betas.empty, "a single short driver disabled the whole fit"
+    assert "beta_oil_wti" in betas.columns
+    assert "beta_treasury_10y" in betas.columns
+    assert "beta_high_yield_spread" not in betas.columns, \
+        "the short driver should be dropped, not fitted on 20 weeks"
+    assert len(betas) == 30
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

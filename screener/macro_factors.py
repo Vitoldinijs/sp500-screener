@@ -162,7 +162,22 @@ def estimate_betas(close_wide: pd.DataFrame, changes: pd.DataFrame,
     weekly_px = close_wide.sort_index().resample("W-FRI").last()
     rets = np.log(weekly_px.where(weekly_px > 0)).diff()
 
-    X_all = changes.dropna()
+    # Drop drivers too short to support a fit BEFORE dropping rows. The
+    # design matrix needs every driver present in a week, so one
+    # late-starting series takes the whole window down with it: FRED only
+    # returned high-yield spreads from 2023-10-31, which cut the usable
+    # history from 159 weeks to 30 — under min_obs — and silently disabled
+    # the entire macro block rather than just that one driver.
+    coverage = changes.notna().sum()
+    usable = [c for c in changes.columns if coverage.get(c, 0) >= min_obs]
+    if not usable:
+        return pd.DataFrame()
+    if len(usable) < len(changes.columns):
+        short = sorted(set(changes.columns) - set(usable))
+        print(f"[macro] dropping drivers with under {min_obs} weekly "
+              f"observations: {', '.join(short)}")
+
+    X_all = changes[usable].dropna()
     idx = rets.index.intersection(X_all.index)
     if len(idx) < min_obs:
         return pd.DataFrame()
