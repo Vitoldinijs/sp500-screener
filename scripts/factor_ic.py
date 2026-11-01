@@ -163,6 +163,10 @@ def decile_profile(df: pd.DataFrame, score: str) -> pd.DataFrame:
     per_session = sub.groupby(keys)["excess"].agg(["mean", "std"])
     out = per_session.groupby(level=1).mean().sort_index()
     out.columns = ["mean", "dispersion"]
+    # Keep the per-session series: the strategy only ever buys the top
+    # decile, so whether D10's excess return is distinguishable from zero
+    # matters more than the correlation across the whole cross-section.
+    out.attrs["per_session"] = per_session["mean"].unstack(level=1)
     return out
 
 
@@ -256,6 +260,23 @@ def main(argv: list[str] | None = None) -> int:
               f"{mid * 100:+.2f}% / {float(means.iloc[-1]) * 100:+.2f}%  |  "
               f"разброс краёв {tail_disp * 100:.2f}% против "
               f"{mid_disp * 100:.2f}% в середине")
+        # The decision-relevant test. A composite IC near zero says the
+        # ordering carries no information, but the book only ever holds the
+        # top decile — so D10 against zero, and D10 minus D1, are the two
+        # numbers that decide whether any of this is tradeable.
+        wide = prof.attrs.get("per_session")
+        if wide is not None and wide.shape[1] == DECILES:
+            top = wide.iloc[:, -1].dropna()
+            spread_series = (wide.iloc[:, -1] - wide.iloc[:, 0]).dropna()
+            t_top, _ = newey_west_tstat(top, lag=args.horizon)
+            t_spread, _ = newey_west_tstat(spread_series, lag=args.horizon)
+            print(f"  D10 против нуля: {top.mean() * 100:+.2f}% "
+                  f"за горизонт | t NW {t_top:+.1f}")
+            print(f"  D10-D1 против нуля: {spread_series.mean() * 100:+.2f}% "
+                  f"| t NW {t_spread:+.1f}")
+            results["top_decile_t"] = float(t_top)
+            results["spread_t"] = float(t_spread)
+
         if tails_beat_middle and tail_disp > mid_disp * 1.1:
             print("  -> оба края обгоняют середину И разброс на краях шире: "
                   "это наклон в волатильность, а не предсказание направления")
