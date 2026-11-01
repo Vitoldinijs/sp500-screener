@@ -43,6 +43,17 @@ on:
         required: false
         type: string
         default: ""
+      fundamentals:
+        description: >-
+          none = price/macro blocks only (as before). edgar = rebuild
+          point-in-time fundamentals from SEC filings first and use them for
+          the whole window (needs the SEC_USER_AGENT secret; adds ~15 min).
+        required: false
+        type: choice
+        default: "none"
+        options:
+          - none
+          - edgar
 
 permissions:
   contents: read
@@ -73,6 +84,7 @@ jobs:
             state/cache/prices.csv.gz
             state/macro.csv
             screener/data/sp500.csv
+            state/cache/fundamentals_edgar.csv.gz
           # Restore from any recent entry to avoid re-downloading, but SAVE
           # under a run-unique key below.
           key: backtest-data-${{ github.run_id }}
@@ -93,6 +105,22 @@ jobs:
           args=(--start "${BACKTEST_START:-$default_start}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
           python scripts/prefetch_prices.py "${args[@]}"
+      - name: Rebuild point-in-time fundamentals from SEC filings
+        if: inputs.fundamentals == 'edgar'
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          BACKTEST_START: ${{ inputs.start_date }}
+          BACKTEST_END: ${{ inputs.end_date }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [[ "$MODE" == 'factor-ic' ]]; then default_start=2020-01-02
+          else default_start=2024-01-02; fi
+          args=(--start "${BACKTEST_START:-$default_start}")
+          if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          # Fails, and writes nothing, if the quality report finds the
+          # result grossly wrong — a split error above all.
+          python scripts/build_edgar_fundamentals.py "${args[@]}"
+
       - name: Save the shared cache
         # The key MUST be unique per run. GitHub cache keys are immutable:
         # a save to an existing key is silently skipped. That is what went
@@ -106,6 +134,7 @@ jobs:
             state/cache/prices.csv.gz
             state/macro.csv
             screener/data/sp500.csv
+            state/cache/fundamentals_edgar.csv.gz
           key: backtest-data-${{ github.run_id }}
 
   # ---------------------------------------------------------------------
@@ -160,6 +189,7 @@ jobs:
             state/cache/prices.csv.gz
             state/macro.csv
             screener/data/sp500.csv
+            state/cache/fundamentals_edgar.csv.gz
           # This run's entry, written by prefetch. No restore-keys
           # fallback: silently running on another run's data is exactly the
           # failure being fixed here.
@@ -176,8 +206,13 @@ jobs:
           # into the restored cache. Without it every leg re-downloads ~1.5M
           # rows it already has, which was most of the previous run's wall
           # clock and the reason the legs had to be throttled.
-          args=(--no-fundamentals --offline --require-inclusion-dates
+          args=(--offline --require-inclusion-dates
                 --output-dir "backtest-results/${{ matrix.name }}" --verbose)
+          if [[ "${{ inputs.fundamentals }}" == 'edgar' ]]; then
+            args+=(--fundamentals-file state/cache/fundamentals_edgar.csv.gz)
+          else
+            args+=(--no-fundamentals)
+          fi
           args+=(--start "${BACKTEST_START:-2024-01-02}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
           # shellcheck disable=SC2206
@@ -230,6 +265,7 @@ jobs:
             state/cache/prices.csv.gz
             state/macro.csv
             screener/data/sp500.csv
+            state/cache/fundamentals_edgar.csv.gz
           key: backtest-data-${{ github.run_id }}
           fail-on-cache-miss: true
 
@@ -239,8 +275,13 @@ jobs:
           BACKTEST_START: ${{ inputs.start_date }}
           BACKTEST_END: ${{ inputs.end_date }}
         run: |
-          args=(--no-fundamentals --offline --require-inclusion-dates
+          args=(--offline --require-inclusion-dates
                 --output-dir backtest-results/factor-ic --verbose)
+          if [[ "${{ inputs.fundamentals }}" == 'edgar' ]]; then
+            args+=(--fundamentals-file state/cache/fundamentals_edgar.csv.gz)
+          else
+            args+=(--no-fundamentals)
+          fi
           args+=(--start "${BACKTEST_START:-2020-01-02}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
           python scripts/backtest.py "${args[@]}"

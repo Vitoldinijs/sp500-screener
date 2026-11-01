@@ -357,6 +357,30 @@ def _disable_fundamental_blocks(raw: dict) -> list[str]:
     return notes
 
 
+def _disable_earnings_block(raw: dict) -> list[str]:
+    """Remove the earnings block for a replay on SEC-reconstructed data.
+
+    Its only metric compares reported earnings with analyst consensus, and
+    consensus is not an SEC disclosure: on this source it is missing for
+    every name on every date. Zero weight alone is not enough — the filter
+    that drops names as "fundamentals incomplete" counts missing metrics
+    across the fundamental blocks, so a structurally absent value would
+    quietly tighten that filter for everyone. The metric list is emptied
+    (the key must stay: the filter indexes it directly) and the remaining
+    weights are renormalised so the composite keeps its scale.
+    """
+    weights = raw.get("factor_weights", {})
+    dropped = float(weights.pop("earnings", 0.0) or 0.0)
+    total = sum(float(v) for v in weights.values())
+    if total > 0:
+        raw["factor_weights"] = {k: round(float(v) / total, 6) for k, v in weights.items()}
+    raw.setdefault("metric_blocks", {})["earnings"] = []
+    return [f"earnings block removed (weight {dropped:g}): analyst consensus "
+            "is not in SEC filings",
+            "reweighted: " + ", ".join(f"{k}={v}" for k, v in
+                                       sorted(raw["factor_weights"].items()))]
+
+
 def _membership_diagnostics(raw_universe: pd.DataFrame, start: date,
                             end: date) -> dict:
     """Show whether the index-inclusion filter was available and what it did.
@@ -391,7 +415,8 @@ def _membership_diagnostics(raw_universe: pd.DataFrame, start: date,
 
 def _copy_replay_inputs(config_path: Path, workspace: Path,
                         overrides: list[str] | None = None,
-                        no_fundamentals: bool = False) -> Config:
+                        no_fundamentals: bool = False,
+                        fundamentals_file: Path | None = None) -> Config:
     config_path = config_path.resolve()
     source_root = config_path.parent
     raw_cfg = Config.load(config_path)
@@ -407,6 +432,8 @@ def _copy_replay_inputs(config_path: Path, workspace: Path,
         raw = yaml.safe_load(fh)
     if no_fundamentals:
         mutation_notes += _disable_fundamental_blocks(raw)
+    if fundamentals_file is not None:
+        mutation_notes += _disable_earnings_block(raw)
     if overrides:
         mutation_notes += ["override " + n for n in _apply_overrides(raw, overrides)]
     # A replay always records per-metric z-scores, so the exported factor
@@ -427,6 +454,14 @@ def _copy_replay_inputs(config_path: Path, workspace: Path,
             continue
         dest = workspace / relative
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if key == "fundamentals_csv" and fundamentals_file is not None:
+            # Replace the live snapshots wholesale rather than appending to
+            # them: the two sources define their ratios differently, and a
+            # replay that switched source part-way would see a jump in every
+            # fundamental score on the day it changed. Rewritten as plain
+            # CSV because the pipeline reads this path by its .csv name.
+            pd.read_csv(fundamentals_file).to_csv(dest, index=False)
+            continue
         shutil.copy2(src, dest)
     copied = Config.load(destination_config)
     copied.root = workspace
@@ -525,8 +560,12 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                  start: date | str, end: date | str,
                  output_dir: str | Path, warmup_sessions: int = 320,
                  verbose: bool = False, overrides: list[str] | None = None,
-                 no_fundamentals: bool = False) -> dict:
+                 no_fundamentals: bool = False,
+                 fundamentals_file: str | Path | None = None) -> dict:
     """Replay the production daily pipeline in an isolated temporary workspace."""
+    if no_fundamentals and fundamentals_file:
+        raise ValueError("--no-fundamentals and --fundamentals-file contradict each other.")
+    fundamentals_file = Path(fundamentals_file).resolve() if fundamentals_file else None
     start_date, end_date = _as_date(start, "start"), _as_date(end, "end")
     if start_date > end_date:
         raise ValueError("Backtest start date must be on or before its end date.")
@@ -535,6 +574,8 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
 
     config_path = Path(config_path).resolve()
     template, universe_path, fundamentals_path = _source_paths(config_path)
+    if fundamentals_file is not None:
+        fundamentals_path = fundamentals_file
     earliest_fundamental, latest_fundamental, snapshot_count = _fundamental_coverage(
         fundamentals_path
     )
@@ -597,7 +638,8 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
         with tempfile.TemporaryDirectory(prefix="sp500-backtest-") as temporary:
             cfg = _copy_replay_inputs(config_path, Path(temporary),
                                       overrides=overrides,
-                                      no_fundamentals=no_fundamentals)
+                                      no_fundamentals=no_fundamentals,
+                                      fundamentals_file=fundamentals_file)
             for index, session in enumerate(market_dates, start=1):
                 pipeline.run_daily(
                     cfg,
@@ -724,6 +766,14 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "zero-weighted for this run. These results describe the "
                     "price- and macro-derived core only, NOT the live strategy."
                 )
+            if fundamentals_file is not None:
+                limitations.append(
+                    "Fundamentals were reconstructed from SEC XBRL filings, "
+                    "each value usable from the day after its filing. Ratio "
+                    "definitions are close to but not identical with the live "
+                    "yfinance ones, and the earnings block was removed because "
+                    "analyst consensus is not an SEC disclosure."
+                )
             if missing_tickers:
                 limitations.append(
                     f"{len(missing_tickers)} current-universe tickers had no price history in the downloaded window."
@@ -781,8 +831,15 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                 },
                 "configuration": {
                     "fundamentals_used": not no_fundamentals,
+                    "fundamentals_source": (
+                        "none" if no_fundamentals
+                        else "sec-edgar" if fundamentals_file is not None
+                        else "live-snapshots"),
                     "mode": ("price-and-macro only (momentum/risk/technical/macro)"
-                             if no_fundamentals else "all factor blocks"),
+                             if no_fundamentals
+                             else "all blocks except earnings (SEC fundamentals)"
+                             if fundamentals_file is not None
+                             else "all factor blocks"),
                     "config_mutations": list(getattr(cfg, "mutation_notes", []) or []),
                     "factor_weights": dict(cfg.weights),
                 },
@@ -891,6 +948,14 @@ def main(argv: list[str] | None = None) -> int:
             "sweep sets this so that failure is loud."
         ),
     )
+    parser.add_argument(
+        "--fundamentals-file",
+        help=(
+            "Use this point-in-time fundamentals file (e.g. the one "
+            "scripts/build_edgar_fundamentals.py writes) for the whole replay "
+            "instead of the live weekly snapshots, which begin in late 2026."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -898,6 +963,8 @@ def main(argv: list[str] | None = None) -> int:
         config_path = Path(args.config).resolve()
         cfg, universe_path, fundamentals_path = _source_paths(config_path)
         cfg.root = config_path.parent
+        if args.fundamentals_file:
+            fundamentals_path = Path(args.fundamentals_file).resolve()
         earliest_fundamental, latest_fundamental, _ = _fundamental_coverage(fundamentals_path)
         requested_start = _as_date(args.start, "start") if args.start else earliest_fundamental
         requested_end = _as_date(args.end, "end") if args.end else _latest_completed_end()
@@ -949,6 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output_dir, warmup_sessions=args.warmup_sessions,
             verbose=args.verbose, overrides=args.overrides,
             no_fundamentals=args.no_fundamentals,
+            fundamentals_file=args.fundamentals_file,
         )
         print(json.dumps({
             "actual_period": summary["actual_period"],

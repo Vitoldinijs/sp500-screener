@@ -10,7 +10,7 @@ import json
 import shutil
 import sys
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +28,8 @@ from screener.data import fundamentals as fund_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
 from scripts import backtest as backtest_mod  # noqa: E402
 from tests import synthetic  # noqa: E402
+from tests import edgar_fixtures as efx  # noqa: E402
+from screener.data import edgar as edgar_mod  # noqa: E402
 
 TOL = 1e-6
 
@@ -1714,12 +1716,11 @@ def test_replay_panel_carries_per_metric_scores_with_a_stable_header():
         )
         panel = pd.read_csv(out / "factor_panel.csv.gz")
 
-        # Fixed column set, from the config, present for every row. The
-        # fundamental blocks are removed from the replay's own config in
-        # --no-fundamentals mode, so check the blocks that actually ran.
-        active = summary["configuration"]["factor_weights"]
-        for block in active:
-            for name in cfg["metric_blocks"][block]:
+        # Fixed column set, from the config, present for every row — every
+        # block's metrics, including the zero-weighted fundamental ones,
+        # which --no-fundamentals reweights but does not remove.
+        for block_metrics in cfg["metric_blocks"].values():
+            for name in block_metrics:
                 assert f"z_{name}" in panel.columns, f"missing z_{name}"
         for name in cfg["diagnostic_metrics"]:
             assert f"m_{name}" in panel.columns, f"missing m_{name}"
@@ -2322,6 +2323,418 @@ def test_factor_panel_decile_profile_is_monotone_for_a_monotone_signal():
     # deciles sit between the tails rather than below both of them.
     assert means.iloc[0] < means.iloc[2:8].mean() < means.iloc[-1]
     assert (profile["dispersion"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# EDGAR point-in-time fundamentals
+# ---------------------------------------------------------------------------
+def _edgar_company(week_based=False, years=5, **kw):
+    """A filer with distinct values every quarter, so any misalignment shows."""
+    first = date(2018, 9, 29) if week_based else date(2018, 12, 31)
+    quarters = efx.fiscal_quarters(first, years, week_based=week_based)
+    keys = [(fy, q) for fy, q, *_ in quarters]
+    rev = {k: 1000.0 + 97 * i + 13 * (i % 3) for i, k in enumerate(keys)}
+    ni = {k: 100.0 + 11 * i - 40 * (i % 4 == 2) for i, k in enumerate(keys)}
+    ocf = {k: 150.0 + 7 * i + 25 * (i % 2) for i, k in enumerate(keys)}
+    shares = {k: 1_000_000.0 - 1_000 * i for i, k in enumerate(keys)}
+    equity = {k: 5_000.0 + 50 * i for i, k in enumerate(keys)}
+    payload = efx.build_payload(
+        quarters,
+        {"revenue": rev, "net_income": ni, "ocf": ocf, "shares_diluted": shares},
+        instants={"equity": equity}, **kw,
+    )
+    return quarters, {"revenue": rev, "net_income": ni, "ocf": ocf}, payload
+
+
+def _true_ttm(series, quarters, idx):
+    keys = [(fy, q) for fy, q, *_ in quarters]
+    return sum(series[k] for k in keys[idx - 3: idx + 1])
+
+
+def _check_ttm_every_quarter(week_based, **kw):
+    quarters, truth, payload = _edgar_company(week_based=week_based, **kw)
+    facts = edgar_mod.parse_companyfacts(payload)
+    checked = 0
+    for idx, (fy, q, _fs, _qs, qe) in enumerate(quarters):
+        if fy == 0:
+            continue       # no prior year filed yet: nothing to subtract
+        lag = 60 if q == 4 else 35
+        cutoff = pd.Timestamp(qe + timedelta(days=lag + 1))
+        state = edgar_mod.state_at(facts, cutoff)
+        assert state is not None
+        assert state["period_end"] == pd.Timestamp(qe), (fy, q)
+        for field, key in (("revenue", "revenue_ttm"), ("net_income", "net_income_ttm"),
+                           ("ocf", "ocf_ttm")):
+            want = _true_ttm(truth[field], quarters, idx)
+            assert abs(state[key] - want) < 1e-6, (
+                f"{key} fy{fy} q{q} ({'52/53-wk' if week_based else 'calendar'}): "
+                f"got {state[key]}, want {want}")
+        # Discrete quarter too, including Q4, which is never filed alone.
+        assert abs(state["revenue_q"] - truth["revenue"][(fy, q)]) < 1e-6, (fy, q)
+        # And the same quarter a year earlier, which drives both growth
+        # ratios. Without this check a broken "one year back" window went
+        # unnoticed: the trailing sums still came out right through the
+        # four-quarter fallback, while growth silently became NaN.
+        for field, key in (("revenue", "revenue_q_prior"),
+                           ("net_income", "net_income_q_prior")):
+            want = truth[field][(fy - 1, q)]
+            assert abs(state[key] - want) < 1e-6, (
+                f"{key} fy{fy} q{q} ({'52/53-wk' if week_based else 'calendar'}): "
+                f"got {state[key]}, want {want}")
+        checked += 1
+    assert checked >= 12
+
+
+def test_edgar_ttm_matches_the_true_four_quarter_sum_every_quarter():
+    """Revenue has quarterly facts; operating cash flow is YTD-only, as in
+    real 10-Qs, so it can only be rebuilt as FY + YTD - prior-year YTD."""
+    _check_ttm_every_quarter(week_based=False)
+
+
+def test_edgar_ttm_survives_52_53_week_fiscal_years():
+    """Period ends drift across calendar days and a 53rd week appears."""
+    _check_ttm_every_quarter(week_based=True)
+
+
+def test_edgar_ttm_survives_a_revenue_tag_switch():
+    """Filers moved to the contract-revenue tag in 2018 — mid-series."""
+    _check_ttm_every_quarter(week_based=False, tag_switch_year=2)
+
+
+def test_edgar_values_are_invisible_until_the_day_after_filing():
+    quarters, _, payload = _edgar_company()
+    facts = edgar_mod.parse_companyfacts(payload)
+    _fy, _q, _fs, _qs, qe = quarters[9]
+    _pfy, _pq, _pfs, _pqs, prev_qe = quarters[8]
+    filed = pd.Timestamp(qe + timedelta(days=35))
+    on_filing_day = edgar_mod.state_at(facts, filed)
+    assert on_filing_day["period_end"] == pd.Timestamp(prev_qe), (
+        "a filing was visible on its own filing day — acceptance can come "
+        "after the close, so it must wait for the next day")
+    next_day = edgar_mod.state_at(facts, filed + pd.Timedelta(days=1))
+    assert next_day["period_end"] == pd.Timestamp(qe)
+
+
+def test_edgar_restatement_replaces_the_original_only_from_its_own_filing():
+    """The market saw the original number until the revision was filed."""
+    quarters, truth, _ = _edgar_company()
+    fy, q, _fs, _qs, qe = quarters[9]
+    revised_on = qe + timedelta(days=50)          # after the 10-Q, before the next
+    _, _, payload = _edgar_company(restate={("revenue", fy, q): (12_345.0, revised_on)})
+    facts = edgar_mod.parse_companyfacts(payload)
+
+    before = edgar_mod.state_at(facts, pd.Timestamp(revised_on))
+    after = edgar_mod.state_at(facts, pd.Timestamp(revised_on) + pd.Timedelta(days=1))
+    assert before["revenue_q"] == truth["revenue"][(fy, q)], "revision leaked backwards"
+    assert after["revenue_q"] == 12_345.0, "revision never took effect"
+
+
+def test_edgar_parse_keeps_only_periodic_reports_in_known_units():
+    payload = {"facts": {"us-gaap": {"Revenues": {"units": {
+        "USD": [
+            {"start": "2020-01-01", "end": "2020-03-31", "val": 10, "filed": "2020-05-01", "form": "10-Q"},
+            {"start": "2020-01-01", "end": "2020-03-31", "val": 99, "filed": "2020-04-20", "form": "8-K"},
+        ],
+        "EUR": [
+            {"start": "2020-01-01", "end": "2020-03-31", "val": 7, "filed": "2020-05-01", "form": "10-Q"},
+        ],
+    }}, "SomethingUnmapped": {"units": {"USD": [
+        {"start": "2020-01-01", "end": "2020-03-31", "val": 1, "filed": "2020-05-01", "form": "10-Q"}]}}}}}
+    facts = edgar_mod.parse_companyfacts(payload)
+    assert facts["value"].tolist() == [10.0]
+    assert facts["field"].tolist() == ["revenue"]
+
+
+def test_edgar_split_factor_counts_only_splits_after_the_share_filing():
+    """NVDA: 4:1 in 2021, 10:1 in 2024. A 2020 filing needs both, a 2022
+    filing only the second, anything after mid-2024 neither."""
+    splits = pd.Series([4.0, 10.0], index=pd.to_datetime(["2021-07-20", "2024-06-10"]))
+    assert edgar_mod.split_factor(splits, pd.Timestamp("2020-11-18")) == 40.0
+    assert edgar_mod.split_factor(splits, pd.Timestamp("2022-05-27")) == 10.0
+    assert edgar_mod.split_factor(splits, pd.Timestamp("2024-08-28")) == 1.0
+    assert edgar_mod.split_factor(splits, None) == 1.0
+    assert edgar_mod.split_factor(pd.Series(dtype=float), pd.Timestamp("2020-01-01")) == 1.0
+
+
+def test_edgar_ratios_never_turn_a_loss_into_a_cheap_multiple():
+    """A negative P/E or P/B would rank as the cheapest stock in the index."""
+    frame = pd.DataFrame({
+        "market_cap": [1000.0, 1000.0, 1000.0],
+        "net_income_ttm": [50.0, -20.0, 50.0],
+        "equity": [400.0, 400.0, -100.0],
+        "revenue_ttm": [800.0, 800.0, 800.0],
+        "gross_profit_ttm": [300.0, 300.0, 300.0],
+        "operating_income_ttm": [80.0, -30.0, 80.0],
+        "dna_ttm": [20.0, 10.0, 20.0],
+        "ocf_ttm": [90.0, 10.0, 90.0],
+        "capex_ttm": [30.0, 5.0, 30.0],
+        "debt": [200.0, 200.0, 200.0],
+        "cash": [50.0, 50.0, 50.0],
+        "revenue_q": [210.0, 210.0, 210.0],
+        "revenue_q_prior": [200.0, 200.0, 200.0],
+        "net_income_q": [15.0, -5.0, 15.0],
+        "net_income_q_prior": [10.0, 10.0, -10.0],
+    })
+    r = edgar_mod.ratios(frame)
+    assert abs(r.loc[0, "pe_ratio"] - 20.0) < 1e-9
+    assert abs(r.loc[0, "ev_ebitda"] - 1150.0 / 100.0) < 1e-9
+    assert abs(r.loc[0, "fcf_yield"] - 0.06) < 1e-9
+    assert abs(r.loc[0, "revenue_growth"] - 0.05) < 1e-9
+    assert np.isnan(r.loc[1, "pe_ratio"]), "loss-maker given a P/E"
+    assert np.isnan(r.loc[1, "ev_ebitda"]), "negative EBITDA given a multiple"
+    assert np.isnan(r.loc[2, "pb_ratio"]), "negative equity given a P/B"
+    assert np.isnan(r.loc[2, "roe"])
+    # Growth off a negative base is measured against its magnitude.
+    assert abs(r.loc[2, "earnings_growth"] - 2.5) < 1e-9
+
+
+def _edgar_states(filings):
+    """Minimal statement states: [(filed, period_end, shares)]."""
+    rows = []
+    for filed, period_end, shares in filings:
+        rows.append({
+            "period_end": pd.Timestamp(period_end), "filed": pd.Timestamp(filed),
+            "available_from": pd.Timestamp(filed) + pd.Timedelta(days=1),
+            "revenue_ttm": 400e6, "gross_profit_ttm": 200e6,
+            "operating_income_ttm": 80e6, "net_income_ttm": 50e6,
+            "dna_ttm": 20e6, "ocf_ttm": 70e6, "capex_ttm": 10e6,
+            "revenue_q": 105e6, "revenue_q_prior": 100e6,
+            "net_income_q": 13e6, "net_income_q_prior": 12e6,
+            "equity": 250e6, "debt": 100e6, "cash": 40e6,
+            "shares": shares, "shares_filed": pd.Timestamp(filed),
+        })
+    return pd.DataFrame(rows)
+
+
+def test_edgar_market_cap_is_continuous_through_a_split():
+    """The builder's central hazard, end to end.
+
+    Before a 10:1 split the company files 1m shares and trades at $500;
+    afterwards it files 10m and trades at $50. The cache holds prices already
+    adjusted to today's basis — $50 throughout. Built naively, market cap
+    would read $50m before the split and $500m after; correctly, $500m both
+    sides, because only splits after a count was filed still need applying.
+    """
+    from scripts import build_edgar_fundamentals as bef
+
+    split_day = pd.Timestamp("2022-06-01")
+    states = _edgar_states([
+        ("2021-11-01", "2021-09-30", 1_000_000.0),
+        ("2022-02-15", "2021-12-31", 1_000_000.0),
+        ("2022-05-02", "2022-03-31", 1_000_000.0),
+        ("2022-08-01", "2022-06-30", 10_000_000.0),   # filed after the split
+        ("2022-11-01", "2022-09-30", 10_000_000.0),
+    ])
+    days = pd.bdate_range("2021-10-01", "2022-12-31")
+    adjusted_close = pd.Series(50.0, index=days)
+    splits = pd.Series([10.0], index=[split_day])
+    weeks = pd.date_range("2021-11-07", "2022-12-25", freq="W-SUN")
+
+    rows = bef.weekly_rows("TEST", states, adjusted_close, splits, weeks)
+    mcap = rows["market_cap"].dropna()
+    assert len(mcap) == len(weeks)
+    assert np.allclose(mcap, 500e6), (
+        f"market cap not continuous through the split: "
+        f"{sorted(set(mcap.round(-6)))}")
+    # P/E follows: $500m / $50m earnings.
+    assert np.allclose(rows["pe_ratio"].dropna(), 10.0)
+
+
+def test_edgar_weekly_rows_use_a_filing_only_after_it_was_made():
+    from scripts import build_edgar_fundamentals as bef
+
+    states = _edgar_states([("2022-02-15", "2021-12-31", 1e6),
+                            ("2022-05-04", "2022-03-31", 1e6)])
+    states.loc[1, "net_income_ttm"] = 100e6           # the new filing doubles NI
+    close = pd.Series(100.0, index=pd.bdate_range("2022-01-01", "2022-06-30"))
+    weeks = pd.date_range("2022-02-20", "2022-06-26", freq="W-SUN")
+    rows = bef.weekly_rows("TEST", states, close, pd.Series(dtype=float), weeks)
+    rows["asof"] = pd.to_datetime(rows["asof"])
+    before = rows[rows["asof"] < pd.Timestamp("2022-05-05")]["pe_ratio"]
+    after = rows[rows["asof"] >= pd.Timestamp("2022-05-05")]["pe_ratio"]
+    assert np.allclose(before, 100e6 / 50e6)
+    assert np.allclose(after, 100e6 / 100e6)
+    # Snapshots are Sundays, built from Friday's close.
+    assert (rows["asof"].dt.dayofweek == 6).all()
+
+
+def test_edgar_quality_report_refuses_a_split_error():
+    """Two anchors off by ~10x is a basis error, and the file must not be
+    written; one anchor off by 30% is only reported."""
+    from scripts import build_edgar_fundamentals as bef
+
+    def frame(scale_by_ticker):
+        rows = []
+        for ticker, week, expected in bef.ANCHORS:
+            # Every ratio filled, so only the anchors are under test — a
+            # thin frame trips the coverage check first, as it should.
+            rows.append({c: 1.0 for c in bef.SCHEMA}
+                        | {"asof": week, "ticker": ticker,
+                           "market_cap": expected * 1e9 * scale_by_ticker.get(ticker, 1.0),
+                           "last_earnings_date": week,
+                           "earnings_surprise_pct": np.nan})
+        return pd.DataFrame(rows)
+
+    cfg = _cfg()
+    assert bef.quality_report(frame({}), cfg) == []
+    assert bef.quality_report(frame({"CMG": 1.3}), cfg) == []
+    fatal = bef.quality_report(frame({"NVDA": 0.1, "CMG": 0.02}), cfg)
+    assert any("split" in f for f in fatal), fatal
+
+
+def test_replay_on_reconstructed_fundamentals_uses_them_without_lookahead():
+    """End to end: a 2016 replay on an SEC-style fundamentals file.
+
+    2016 predates every live snapshot, so the look-ahead guards must accept
+    it only because the file covers the period. The fundamental blocks must
+    then actually score, and the earnings block must be gone entirely — not
+    merely zero-weighted, or its absent metric would count against every name
+    in the incomplete-fundamentals filter.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    cfg = _cfg()
+    uni = pd.read_csv(cfg.path("universe_csv"))
+    tickers = sorted(set(uni["ticker"].astype(str).str.upper()))[:40]
+    prices = _synthetic_price_history(tickers + ["SPY"])
+    rng = np.random.default_rng(21)
+    weeks = pd.date_range("2015-12-20", "2016-05-01", freq="W-SUN")
+    rows = []
+    for t in tickers:
+        base = {"pe_ratio": rng.uniform(8, 40), "pb_ratio": rng.uniform(1, 8),
+                "ps_ratio": rng.uniform(1, 10), "ev_ebitda": rng.uniform(5, 25),
+                "fcf_yield": rng.uniform(0.0, 0.08), "roe": rng.uniform(0.05, 0.4),
+                "gross_margin": rng.uniform(0.2, 0.7), "net_margin": rng.uniform(0.03, 0.3),
+                "net_debt_ebitda": rng.uniform(-1, 3), "revenue_growth": rng.normal(0.06, 0.1),
+                "earnings_growth": rng.normal(0.08, 0.2), "market_cap": rng.uniform(5e9, 3e11)}
+        for w in weeks:
+            rows.append({"asof": w.strftime("%Y-%m-%d"), "ticker": t, **base,
+                         "last_earnings_date": "2015-11-01",
+                         "earnings_surprise_pct": np.nan})
+
+    with tempfile.TemporaryDirectory() as td:
+        fund = Path(td) / "fund.csv.gz"
+        pd.DataFrame(rows).to_csv(fund, index=False, compression="gzip")
+        out = Path(td) / "out"
+        summary = bt.run_backtest(
+            ROOT / "config.yml", prices, date(2016, 1, 4), date(2016, 3, 31),
+            out, warmup_sessions=320, fundamentals_file=fund,
+        )
+        panel = pd.read_csv(out / "factor_panel.csv.gz")
+
+    conf = summary["configuration"]
+    assert conf["fundamentals_source"] == "sec-edgar"
+    assert "earnings" not in conf["factor_weights"]
+    assert {"value", "quality", "growth"} <= set(conf["factor_weights"])
+    assert abs(sum(conf["factor_weights"].values()) - 1.0) < 1e-6
+    assert any("SEC XBRL" in lim for lim in summary["limitations"])
+    # The fundamental blocks scored on dates no live snapshot covers.
+    assert panel["block_value"].notna().mean() > 0.5
+    assert panel["block_quality"].notna().mean() > 0.5
+    # And nobody was dropped for the structurally absent surprise metric.
+    reasons = panel["exclude_reason"].fillna("")
+    assert not reasons.str.contains("fundamentals incomplete").any()
+
+    with pytest_raises(ValueError):
+        bt.run_backtest(ROOT / "config.yml", prices, date(2016, 1, 4),
+                        date(2016, 1, 29), Path(td) / "x", warmup_sessions=320,
+                        no_fundamentals=True, fundamentals_file=fund)
+
+
+def test_edgar_builder_runs_end_to_end_with_sec_and_prices_stubbed():
+    """The script's glue — CIK mapping, fact download, weekly join, report,
+    output — run whole, so a wiring mistake fails here rather than after a
+    runner has spent half an hour downloading."""
+    import os
+    from scripts import build_edgar_fundamentals as bef
+
+    cfg = _cfg()
+    tickers = sorted(pd.read_csv(cfg.path("universe_csv"))["ticker"].astype(str))[:3]
+    quarters = efx.fiscal_quarters(date(2018, 12, 31), 5)
+    keys = [(fy, q) for fy, q, *_ in quarters]
+    payload = efx.build_payload(
+        quarters,
+        {"revenue": {k: 1000.0 + 20 * i for i, k in enumerate(keys)},
+         "net_income": {k: 120.0 + 3 * i for i, k in enumerate(keys)},
+         "ocf": {k: 150.0 + 2 * i for i, k in enumerate(keys)},
+         "shares_diluted": {k: 1e6 for k in keys}},
+        instants={"equity": {k: 4000.0 for k in keys}},
+    )
+
+    class StubClient:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def get_json(self, url):
+            if url == bef.TICKERS_URL:
+                return {str(i): {"cik_str": 1000 + i, "ticker": t}
+                        for i, t in enumerate(tickers)}
+            return payload
+
+    def stub_prices(names, start, end, **_k):
+        idx = pd.bdate_range(start, end)
+        return ({t: pd.Series(50.0, index=idx) for t in names},
+                {t: pd.Series(dtype=float) for t in names})
+
+    saved = (bef.SecClient, bef.download_close_and_splits, os.environ.get("SEC_USER_AGENT"))
+    bef.SecClient, bef.download_close_and_splits = StubClient, stub_prices
+    os.environ["SEC_USER_AGENT"] = "Test Runner test@example.com"
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / "f.csv.gz"
+            code = bef.main(["--start", "2020-01-02", "--end", "2022-06-30",
+                             "--limit", "3", "--output", str(target)])
+            assert code == 0
+            out = pd.read_csv(target)
+    finally:
+        bef.SecClient, bef.download_close_and_splits = saved[0], saved[1]
+        if saved[2] is None:
+            os.environ.pop("SEC_USER_AGENT", None)
+        else:
+            os.environ["SEC_USER_AGENT"] = saved[2]
+
+    assert list(out.columns) == bef.SCHEMA
+    assert set(out["ticker"]) == set(tickers)
+    assert pd.to_datetime(out["asof"]).dt.dayofweek.eq(6).all()
+    # $50 x 1m shares = $50m; TTM NI around 500 -> P/E around 1e5. Mostly
+    # the point is that the chain produced finite, consistent numbers.
+    assert np.allclose(out["market_cap"].dropna(), 50e6)
+    assert out["pe_ratio"].notna().mean() > 0.9
+
+
+def test_edgar_builder_refuses_to_run_without_a_declared_identity():
+    import os
+    from scripts import build_edgar_fundamentals as bef
+    saved = os.environ.pop("SEC_USER_AGENT", None)
+    try:
+        assert bef.main(["--start", "2020-01-02", "--limit", "1"]) == 2
+    finally:
+        if saved is not None:
+            os.environ["SEC_USER_AGENT"] = saved
+
+
+def pytest_raises(exc_type):
+    """Tiny stand-in for pytest.raises; the suite also runs without pytest."""
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, et, ev, tb):
+            if et is None:
+                raise AssertionError(f"{exc_type.__name__} not raised")
+            return issubclass(et, exc_type)
+    return _Ctx()
+
+
+def test_edgar_filing_states_become_available_the_day_after_each_filing():
+    _, _, payload = _edgar_company(years=3)
+    facts = edgar_mod.parse_companyfacts(payload)
+    states = edgar_mod.filing_states(facts)
+    assert not states.empty
+    assert (states["available_from"] > states["filed"]).all()
+    assert states["available_from"].is_monotonic_increasing
 
 
 if __name__ == "__main__":
