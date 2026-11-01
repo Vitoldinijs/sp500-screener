@@ -2200,13 +2200,18 @@ def test_factor_panel_decile_profile_is_monotone_for_a_monotone_signal():
         profile = factor_ic.decile_profile(df, "composite")
 
     assert len(profile) == 10
+    means = profile["mean"]
     # learn.spearman, not pandas' method="spearman", which imports scipy —
     # a dependency this project does not declare and the runner will not have.
-    rho = learn.spearman(pd.Series(profile.to_numpy()),
-                         pd.Series(range(len(profile)), dtype=float),
+    rho = learn.spearman(pd.Series(means.to_numpy()),
+                         pd.Series(range(len(means)), dtype=float),
                          minimum_n=3)
     assert rho > 0.9, f"monotone signal gave a non-monotone profile: rho={rho}"
-    assert profile.iloc[-1] > profile.iloc[0]
+    assert means.iloc[-1] > means.iloc[0]
+    # A genuine signal must NOT look like the volatility tilt: the middle
+    # deciles sit between the tails rather than below both of them.
+    assert means.iloc[0] < means.iloc[2:8].mean() < means.iloc[-1]
+    assert (profile["dispersion"] > 0).all()
 
 
 if __name__ == "__main__":

@@ -56,6 +56,14 @@ HORIZON_DEFAULT = 21
 MIN_NAMES = 30          # sessions with a thinner cross-section are skipped
 DECILES = 10
 
+# Overlapping windows mean n sessions carry only about n/horizon independent
+# observations. Below five of those there is no inference to be had, and
+# printing a t-statistic anyway invites exactly the wrong reading: the
+# fundamental blocks were scored on 17-26 sessions of a single month and one
+# of them came back at t=4.7, sitting in the same column as a figure built
+# from 1,695 sessions. The IC is still worth showing; the t-statistic is not.
+MIN_INDEPENDENT = 5
+
 
 def newey_west_tstat(series: pd.Series, lag: int) -> tuple[float, float]:
     """t-statistic for the mean of an autocorrelated series, and its SE.
@@ -130,21 +138,32 @@ def ic_series(df: pd.DataFrame, score: str) -> pd.Series:
     return out.sort_index()
 
 
-def decile_profile(df: pd.DataFrame, score: str) -> pd.Series:
-    """Mean excess return per score decile, averaged across sessions.
+def decile_profile(df: pd.DataFrame, score: str) -> pd.DataFrame:
+    """Per score decile: mean excess return, and how dispersed it is.
 
     Each session is bucketed on its own, so a session with 400 eligible
     names and one with 450 contribute equally rather than by size.
+
+    The dispersion column is what distinguishes a signal from a volatility
+    tilt, and it is the reason this returns two numbers rather than one. A
+    ranking that predicts direction gives a profile that climbs from D1 to
+    D10. A ranking that merely concentrates volatile, high-beta names at
+    both ends gives a U — both tails beat the middle — and in a rising
+    market both tails look good. Those two stories are indistinguishable
+    from the means alone, and tell apart immediately by dispersion: under
+    the volatility reading, D1 and D10 have the widest spread of outcomes,
+    and the U in the means is just drift times beta.
     """
     sub = df.dropna(subset=[score, "excess"])
     if sub.empty:
-        return pd.Series(dtype=float)
+        return pd.DataFrame()
     pct = sub.groupby("data_date")[score].rank(pct=True, method="first")
     decile = np.minimum((pct * DECILES).astype(int), DECILES - 1)
-    per_session = sub.groupby(
-        [sub["data_date"].to_numpy(), decile.to_numpy()]
-    )["excess"].mean()
-    return per_session.groupby(level=1).mean().sort_index()
+    keys = [sub["data_date"].to_numpy(), decile.to_numpy()]
+    per_session = sub.groupby(keys)["excess"].agg(["mean", "std"])
+    out = per_session.groupby(level=1).mean().sort_index()
+    out.columns = ["mean", "dispersion"]
+    return out
 
 
 def report_score(df: pd.DataFrame, score: str, horizon: int, label: str) -> dict:
@@ -156,10 +175,18 @@ def report_score(df: pd.DataFrame, score: str, horizon: int, label: str) -> dict
     naive_t = mean / (ics.std(ddof=1) / np.sqrt(len(ics))) if ics.std(ddof=1) > 0 else float("nan")
     nw_t, _ = newey_west_tstat(ics, lag=horizon)
     positive = float((ics > 0).mean())
-    print(f"{label:<22}{mean:+8.4f}{naive_t:9.1f}{nw_t:9.1f}"
-          f"{positive * 100:8.0f}%{len(ics):8d}")
-    return {"mean_ic": mean, "naive_t": naive_t, "newey_west_t": nw_t,
-            "positive_share": positive, "sessions": int(len(ics))}
+    thin = len(ics) < MIN_INDEPENDENT * horizon
+    if thin:
+        # Show the IC, withhold the inference, and say so in the row itself.
+        print(f"{label:<22}{mean:+8.4f}{'—':>9}{'—':>9}"
+              f"{positive * 100:8.0f}%{len(ics):8d}  мало данных")
+    else:
+        print(f"{label:<22}{mean:+8.4f}{naive_t:9.1f}{nw_t:9.1f}"
+              f"{positive * 100:8.0f}%{len(ics):8d}")
+    return {"mean_ic": mean, "naive_t": None if thin else naive_t,
+            "newey_west_t": None if thin else nw_t,
+            "positive_share": positive, "sessions": int(len(ics)),
+            "sample_too_thin_for_inference": bool(thin)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -203,18 +230,41 @@ def main(argv: list[str] | None = None) -> int:
     for col in sorted(c for c in df.columns if c.startswith("block_")):
         results[col] = report_score(df, col, args.horizon, col)
 
-    print("\nдецили по composite (средний избыточный доход, % за горизонт)")
+    print("\nдецили по composite: средний избыточный доход и разброс, "
+          "% за горизонт")
     prof = decile_profile(df, "composite")
     if not prof.empty:
-        for d, v in prof.items():
-            bar = "#" * int(abs(v) * 400)
-            print(f"  D{int(d) + 1:<2} {v * 100:+7.2f}%  {bar}")
-        spread = float(prof.iloc[-1] - prof.iloc[0])
-        rho = spearman(pd.Series(prof.to_numpy()),
-                       pd.Series(range(len(prof)), dtype=float), minimum_n=3)
-        print(f"  D10-D1 спред: {spread * 100:+.2f}% | монотонность (rho) {rho:+.2f}")
+        means, disp = prof["mean"], prof["dispersion"]
+        for d in prof.index:
+            bar = "#" * int(abs(float(means.loc[d])) * 400)
+            print(f"  D{int(d) + 1:<2} {float(means.loc[d]) * 100:+7.2f}%  "
+                  f"разброс {float(disp.loc[d]) * 100:6.2f}%  {bar}")
+        spread = float(means.iloc[-1] - means.iloc[0])
+        rho = spearman(pd.Series(means.to_numpy()),
+                       pd.Series(range(len(means)), dtype=float), minimum_n=3)
+        print(f"  D10-D1 спред: {spread * 100:+.2f}% | "
+              f"монотонность (rho) {rho:+.2f}")
+
+        # Is the profile a U rather than a ramp, and if so does dispersion
+        # follow it? That combination is the volatility tilt, not a signal.
+        mid = float(means.iloc[2:8].mean())
+        tails_beat_middle = (float(means.iloc[0]) > mid
+                             and float(means.iloc[-1]) > mid)
+        tail_disp = (float(disp.iloc[0]) + float(disp.iloc[-1])) / 2
+        mid_disp = float(disp.iloc[2:8].mean())
+        print(f"  края vs середина: доход {float(means.iloc[0]) * 100:+.2f}% / "
+              f"{mid * 100:+.2f}% / {float(means.iloc[-1]) * 100:+.2f}%  |  "
+              f"разброс краёв {tail_disp * 100:.2f}% против "
+              f"{mid_disp * 100:.2f}% в середине")
+        if tails_beat_middle and tail_disp > mid_disp * 1.1:
+            print("  -> оба края обгоняют середину И разброс на краях шире: "
+                  "это наклон в волатильность, а не предсказание направления")
         results["decile_spread"] = spread
         results["decile_monotonicity"] = rho
+        results["tails_beat_middle"] = bool(tails_beat_middle)
+        results["tail_dispersion_ratio"] = (
+            tail_disp / mid_disp if mid_disp > 0 else None
+        )
 
     if args.by_year and "composite" in df.columns:
         print("\ncomposite IC по годам")
