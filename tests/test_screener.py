@@ -1718,6 +1718,93 @@ def test_replay_reads_macro_from_the_workspace_copy():
             source.unlink()
 
 
+def test_members_as_of_excludes_companies_before_they_joined_the_index():
+    """The exact failure the first backtest showed.
+
+    That run bought Palantir in 2024 — it joined the index in September 2024
+    — and Vistra before its May 2024 inclusion. Those are not ordinary
+    survivors: both were ADDED because they had already risen, so holding
+    them from the start manufactures the return rather than discovering it.
+    """
+    frame = pd.DataFrame({
+        "ticker": ["PLTR", "VST", "MSFT", "ODD"],
+        "name": ["Palantir", "Vistra", "Microsoft", "Odd"],
+        "sector": ["IT", "Utilities", "IT", "IT"],
+        "industry": ["", "", "", ""],
+        "date_added": [date(2024, 9, 23), date(2024, 5, 8), date(1994, 6, 1), None],
+    })
+
+    early = set(universe.members_as_of(frame, date(2024, 1, 2))["ticker"])
+    assert "PLTR" not in early and "VST" not in early
+    assert "MSFT" in early
+    # An unknown inclusion date means "already a member" — the conservative
+    # reading for a name that appears on the list at all.
+    assert "ODD" in early
+
+    mid = set(universe.members_as_of(frame, date(2024, 6, 1))["ticker"])
+    assert "VST" in mid and "PLTR" not in mid
+
+    late = set(universe.members_as_of(frame, date(2025, 1, 2))["ticker"])
+    assert {"PLTR", "VST", "MSFT", "ODD"} <= late
+
+
+def test_missing_inclusion_dates_are_reported_not_silently_ignored():
+    """A no-op filter must be visible, because it restores the whole bias.
+
+    members_as_of cannot filter a frame with no date_added column, and
+    returning it untouched is the only safe behaviour. The danger is that
+    this looks identical to a working filter, so the backtest has to say so.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    without = pd.DataFrame({"ticker": ["AAA"], "name": ["A"], "sector": ["IT"],
+                            "industry": [""]})
+    # No filtering is possible...
+    assert len(universe.members_as_of(without, date(2024, 1, 2))) == 1
+    # ...so the report must flag it loudly.
+    diag = bt._membership_diagnostics(without, date(2024, 1, 2), date(2026, 1, 1))
+    assert diag["inclusion_dates_available"] is False
+    assert "NONE" in diag["effect"]
+
+    with_dates = pd.DataFrame({
+        "ticker": ["AAA", "BBB"], "name": ["A", "B"], "sector": ["IT", "IT"],
+        "industry": ["", ""],
+        "date_added": [date(1990, 1, 1), date(2025, 6, 1)],
+    })
+    diag2 = bt._membership_diagnostics(with_dates, date(2024, 1, 2), date(2026, 1, 1))
+    assert diag2["inclusion_dates_available"] is True
+    assert diag2["joined_index_during_period"] == 1
+    assert diag2["excluded_at_start"] == 1
+
+
+def test_historical_load_universe_applies_the_inclusion_filter():
+    """End to end: a pre-archive replay date must not see later joiners."""
+    import tempfile
+    import shutil as _shutil
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        _shutil.copy2(ROOT / "config.yml", root / "config.yml")
+        cfg = Config.load(root / "config.yml")
+        cfg.root = root
+
+        csv_path = cfg.path("universe_csv")
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({
+            "ticker": ["PLTR", "MSFT"], "name": ["Palantir", "Microsoft"],
+            "sector": ["IT", "IT"], "industry": ["", ""],
+            "date_added": ["2024-09-23", "1994-06-01"],
+        }).to_csv(csv_path, index=False)
+
+        # No archived membership exists for 2024, so this takes the fallback
+        # path — which is precisely where the bias used to live.
+        got = universe.load_universe(cfg, allow_network=False, asof=date(2024, 1, 2))
+        assert set(got["ticker"]) == {"MSFT"}, \
+            "the fallback path let a future constituent through"
+
+
 if __name__ == "__main__":
     print("Running screener test suite\n" + "-" * 60)
     sys.exit(_run_all())

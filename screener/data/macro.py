@@ -24,6 +24,7 @@ crashing the daily job.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -95,7 +96,16 @@ def _fetch_one(series_id: str, start: date, end: date, api_key: str) -> pd.DataF
     }
     resp = requests.get(FRED_URL, params=params, timeout=20)
     if resp.status_code != 200:
-        raise RuntimeError(f"HTTP {resp.status_code}")
+        # FRED explains refusals in the body — a rejected key, a bad series
+        # id, a throttle. The status code alone sent us guessing last time,
+        # so surface the message (trimmed, and never echoing the key).
+        detail = ""
+        try:
+            payload = resp.json()
+            detail = str(payload.get("error_message") or payload)[:200]
+        except Exception:  # noqa: BLE001
+            detail = resp.text[:200].replace("\n", " ")
+        raise RuntimeError(f"HTTP {resp.status_code}: {detail}")
     payload = resp.json()
     rows = payload.get("observations") or []
     if not rows:
@@ -110,7 +120,15 @@ def _fetch_one(series_id: str, start: date, end: date, api_key: str) -> pd.DataF
 def fetch_macro(start: date, end: date, api_key: str | None = None,
                 series: tuple[Series, ...] = SERIES) -> pd.DataFrame:
     """Pull the configured series. Returns whatever succeeded, never raises."""
-    api_key = api_key or os.environ.get("FRED_API_KEY", "")
+    api_key = (api_key or os.environ.get("FRED_API_KEY", "")).strip()
+    if api_key and not re.fullmatch(r"[0-9a-z]{32}", api_key):
+        # FRED keys are exactly 32 lowercase alphanumerics. Anything else is
+        # almost always a copy/paste artefact — surrounding quotes, a
+        # trailing newline, or the wrong value pasted into the secret — and
+        # produces the same opaque 400 for every series.
+        print(f"[macro] WARNING: FRED_API_KEY does not look like a FRED key "
+              f"(expected 32 lowercase alphanumerics, got {len(api_key)} "
+              f"characters). Requests will probably be rejected.")
     if not api_key:
         print("[macro] FRED_API_KEY not set; skipping refresh")
         return _empty()

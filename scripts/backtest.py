@@ -357,6 +357,38 @@ def _disable_fundamental_blocks(raw: dict) -> list[str]:
     return notes
 
 
+def _membership_diagnostics(raw_universe: pd.DataFrame, start: date,
+                            end: date) -> dict:
+    """Show whether the index-inclusion filter was available and what it did.
+
+    A missing `date_added` column makes universe.members_as_of a silent
+    no-op, which would quietly restore exactly the bias it exists to remove.
+    Reporting the counts means that failure cannot pass unnoticed again.
+    """
+    if "date_added" not in getattr(raw_universe, "columns", []):
+        return {
+            "inclusion_dates_available": False,
+            "effect": "NONE — every current constituent was treated as a "
+                      "member for the whole period, so names that joined the "
+                      "index during the window were tradeable before they "
+                      "existed in it. Refresh the universe CSV and rerun.",
+        }
+    added = pd.to_datetime(raw_universe["date_added"], errors="coerce")
+    joined_during = added[(added >= pd.Timestamp(start)) & (added <= pd.Timestamp(end))]
+    return {
+        "inclusion_dates_available": True,
+        "constituents": int(len(raw_universe)),
+        "inclusion_date_known": int(added.notna().sum()),
+        "excluded_at_start": int((added > pd.Timestamp(start)).sum()),
+        "joined_index_during_period": int(len(joined_during)),
+        "note": ("Names are only tradeable from their index-inclusion date. "
+                 "Members REMOVED from the index during the period cannot be "
+                 "recovered from a current snapshot and remain absent; that "
+                 "residual bias is milder, since removals are typically weak "
+                 "performers a top-ranked screen would not have held."),
+    }
+
+
 def _copy_replay_inputs(config_path: Path, workspace: Path,
                         overrides: list[str] | None = None,
                         no_fundamentals: bool = False) -> Config:
@@ -576,6 +608,22 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                 limitations.append(
                     f"Only {len(trades)} trades closed; trade-level statistics have a small sample."
                 )
+            pit = _membership_diagnostics(raw_universe, actual_start, actual_end)
+            if not pit.get("inclusion_dates_available"):
+                limitations.append(
+                    "No index-inclusion dates were available, so today's "
+                    "constituents were treated as members for the whole "
+                    "period. Companies added during the window were tradeable "
+                    "before they joined the index, which inflates returns."
+                )
+            elif pit.get("joined_index_during_period"):
+                limitations.append(
+                    f"{pit['joined_index_during_period']} companies joined the "
+                    "index during the period and were correctly untradeable "
+                    "until their inclusion date. Companies REMOVED during the "
+                    "period are still absent from the universe (residual "
+                    "survivorship bias)."
+                )
             if no_fundamentals:
                 limitations.append(
                     "Fundamental blocks (value, quality, growth, earnings) were "
@@ -626,6 +674,9 @@ def run_backtest(config_path: str | Path, prices_long: pd.DataFrame,
                     "risk_free_rate": 0.0,
                     "annualization_sessions": TRADING_DAYS_PER_YEAR,
                 },
+                "point_in_time_membership": _membership_diagnostics(
+                    raw_universe, actual_start, actual_end
+                ),
                 "universe_membership": {
                     "history_file_available": bool(not universe_history.empty),
                     "first_snapshot_date": first_universe_snapshot.isoformat() if first_universe_snapshot else None,
@@ -776,6 +827,7 @@ def main(argv: list[str] | None = None) -> int:
             "benchmark": summary["benchmark"],
             "relative_to_benchmark": summary["relative_to_benchmark"],
             "universe_membership": summary["universe_membership"],
+            "point_in_time_membership": summary["point_in_time_membership"],
             "limitations": summary["limitations"],
             "output_dir": str(Path(args.output_dir).resolve()),
         }, ensure_ascii=False, indent=2))

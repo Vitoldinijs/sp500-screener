@@ -17,7 +17,11 @@ import pandas as pd
 from .config import Config
 
 WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-UNIVERSE_COLUMNS = ["ticker", "name", "sector", "industry"]
+# `date_added` is the index-inclusion date Wikipedia publishes next to each
+# constituent. It used to be parsed and thrown away, which is what made the
+# backtest buy PLTR in early 2024 — nine months before it joined the index.
+# Keeping it lets a replay exclude names that had not been added yet.
+UNIVERSE_COLUMNS = ["ticker", "name", "sector", "industry", "date_added"]
 HISTORY_COLUMNS = ["asof", *UNIVERSE_COLUMNS]
 
 
@@ -34,6 +38,13 @@ def _normalise(df: pd.DataFrame) -> pd.DataFrame:
         if column not in out.columns:
             out[column] = pd.NA
     out["ticker"] = out["ticker"].map(_clean_ticker)
+    if "date_added" in out.columns:
+        # Wikipedia carries a few footnote-laden or malformed dates; an
+        # unparseable one becomes NaT and is treated as "always a member",
+        # which is the conservative reading for a name already on the list.
+        out["date_added"] = pd.to_datetime(
+            out["date_added"].astype(str).str.slice(0, 10), errors="coerce"
+        ).dt.date
     out = out[
         out["ticker"].ne("") & out["ticker"].str.lower().ne("nan")
     ]
@@ -59,6 +70,8 @@ def fetch_from_wikipedia() -> pd.DataFrame:
             "Security": "name",
             "GICS Sector": "sector",
             "GICS Sub-Industry": "industry",
+            "Date added": "date_added",
+            "Date first added": "date_added",
         }
     )
     return _normalise(df)
@@ -152,6 +165,34 @@ def fetch_current_universe(cfg: Config, allow_network: bool = True) -> pd.DataFr
     )
 
 
+def members_as_of(universe: pd.DataFrame, asof: date) -> pd.DataFrame:
+    """Drop constituents that had not yet joined the index on `asof`.
+
+    The dated archive is the authoritative source, but it only begins when
+    this bot started running. Before that the committed list is all there
+    is — and replaying today's list into the past is what let a 2024 session
+    buy Palantir, which did not join the index until September 2024, or
+    Vistra, which joined that May. Those are not merely survivors: they were
+    added BECAUSE they had already risen, so letting the screener hold them
+    from the start manufactures most of the backtest's return.
+
+    `date_added` fixes that half of the problem exactly. The other half —
+    companies that were members then and have since been dropped — cannot be
+    recovered from a current snapshot, since they are simply absent from it.
+    That residual bias is milder: removals are usually poor performers, and a
+    screener that buys its top-ranked names would rarely have held them. It
+    is reported in the backtest summary rather than papered over.
+
+    A missing or unparseable `date_added` is treated as "already a member",
+    the conservative reading for a name that is on the list at all.
+    """
+    if universe is None or universe.empty or "date_added" not in universe.columns:
+        return universe
+    added = pd.to_datetime(universe["date_added"], errors="coerce")
+    eligible = added.isna() | (added <= pd.Timestamp(asof))
+    return universe[eligible].reset_index(drop=True)
+
+
 def load_universe(
     cfg: Config,
     allow_network: bool = True,
@@ -168,10 +209,11 @@ def load_universe(
         archived = historical_snapshot(history_path, asof)
         if archived is not None:
             return archived
-        # If there is no archived set old enough, do not query Wikipedia for a
-        # historical date. Fall back to the committed list; the backtest report
-        # makes this pre-archive survivorship-bias interval explicit.
-        return fetch_current_universe(cfg, allow_network=False)
+        # No archived set is old enough. Fall back to the committed list,
+        # but filtered by each name's index-inclusion date so the replay
+        # cannot hold a company before it was a constituent. The backtest
+        # report still flags the residual (removed-member) bias.
+        return members_as_of(fetch_current_universe(cfg, allow_network=False), asof)
     return fetch_current_universe(cfg, allow_network=allow_network)
 
 

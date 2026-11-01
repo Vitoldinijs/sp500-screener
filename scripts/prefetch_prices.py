@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from screener.config import Config  # noqa: E402
+from screener import universe as universe_mod  # noqa: E402
 from screener.data import macro as macro_mod  # noqa: E402
 from screener.data import prices as price_mod  # noqa: E402
 
@@ -48,7 +49,24 @@ def main(argv: list[str] | None = None) -> int:
     warmup_days = int(math.ceil(args.warmup_sessions * 365.25 / 252.0)) + 30
     download_start = start - timedelta(days=warmup_days)
 
-    universe = pd.read_csv(cfg.path("universe_csv"))
+    # Refresh the constituent list first. This is what carries `date_added`,
+    # the index-inclusion date that stops a replay holding a company before
+    # it was a member — the single largest source of bias in the last run.
+    try:
+        universe = universe_mod.fetch_current_universe(cfg, allow_network=True)
+        print(f"[prefetch] universe refreshed: {len(universe)} constituents")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[prefetch] universe refresh failed ({exc}); using committed CSV")
+        universe = pd.read_csv(cfg.path("universe_csv"))
+
+    if "date_added" in universe.columns:
+        known = pd.to_datetime(universe["date_added"], errors="coerce").notna().sum()
+        print(f"[prefetch] index-inclusion dates known for {known}/{len(universe)} names")
+    else:
+        print("[prefetch] WARNING: no date_added column; a replay cannot tell "
+              "when a company joined the index and will hold today's "
+              "constituents retroactively.", file=sys.stderr)
+
     tickers = set(universe["ticker"].dropna().astype(str).str.upper())
 
     history_path = cfg.path("universe_history_csv")
