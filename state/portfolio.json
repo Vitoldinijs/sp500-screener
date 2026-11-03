@@ -1,21 +1,29 @@
 {
-  "cash": 10000.0,
+  "cash": 7500.0,
   "start_capital": 10000.0,
-  "bar_count": 1,
-  "last_run_date": "2026-10-30",
-  "positions": [],
-  "pending_orders": [
+  "bar_count": 2,
+  "last_run_date": "2026-11-02",
+  "positions": [
     {
-      "side": "BUY",
+      "trade_id": 1,
       "ticker": "HAS",
       "sector": "Consumer Discretionary",
       "name": "Hasbro",
-      "notional": 2500.0,
+      "shares": 20.927559,
+      "entry_date": "2026-11-02",
+      "entry_price": 119.4597,
+      "cost_basis": 2500.0,
+      "cumulative_cost_basis": 2500.0,
+      "cumulative_exit_proceeds": 0.0,
+      "cumulative_realized_pnl": 0.0,
+      "cumulative_shares_sold": 0.0,
+      "total_shares_bought": 20.927559403305988,
       "allocation_weight": 1.8000000000000003,
-      "rank_percentile": 1.0,
+      "entry_bar": 2,
       "entry_score": 0.9936428407161737,
-      "rank": 1,
-      "blocks": {
+      "signal_date": "2026-10-30",
+      "signal_id": "2026-10-30:HAS",
+      "entry_blocks": {
         "value": -0.18936221941652912,
         "quality": 1.2292349081066132,
         "growth": 0.7130240055843002,
@@ -25,18 +33,55 @@
         "technical": -0.12738860389187268,
         "macro": null
       },
-      "signal_close": 119.08999633789062,
-      "signal_date": "2026-10-30",
-      "signal_id": "2026-10-30:HAS",
+      "entry_rank": 1,
+      "av_verdict": "confirmed",
+      "last_price": 118.36,
+      "last_value": 2476.99,
+      "average_entry_price": 119.4597,
+      "bars_held": 0,
+      "stale_days": 0,
+      "unrealised_pct": -0.009204,
+      "last_composite": 0.9294201993912672,
+      "last_rank_percentile": 1.0,
+      "weak_signal_runs": 0,
+      "last_signal_review": "rank percentile 100% remains acceptable"
+    }
+  ],
+  "pending_orders": [
+    {
+      "side": "BUY",
+      "ticker": "PSX",
+      "sector": "Energy",
+      "name": "Phillips 66",
+      "notional": 2494.25,
+      "allocation_weight": 1.7957066215113722,
+      "rank_percentile": 0.9976133651551312,
+      "entry_score": 0.7800958738412759,
+      "rank": 2,
+      "blocks": {
+        "value": 0.6113221899069112,
+        "quality": -0.3300463121547749,
+        "growth": 1.4090881820468022,
+        "momentum": 1.516954115203868,
+        "earnings": 0.7987473251795363,
+        "risk": -0.26116904829727156,
+        "technical": -0.36175754731099036,
+        "macro": 1.670928242868874
+      },
+      "signal_close": 275.0400085449219,
+      "signal_date": "2026-11-02",
+      "signal_id": "2026-11-02:PSX",
       "av_verdict": "confirmed",
       "av_reason": "price confirmed; OVERVIEW unavailable",
       "reason": "rank-weighted composite score"
     }
   ],
-  "next_trade_id": 1,
+  "next_trade_id": 2,
   "version": 2,
   "peak_equity": 10000.0,
-  "current_drawdown_pct": 0.0,
+  "current_drawdown_pct": 0.002301,
   "drawdown_paused": false,
-  "drawdown_pause_date": null
+  "drawdown_pause_date": null,
+  "drawdown_breaker_peak": 10000.0,
+  "drawdown_pause_bar": null
 }
