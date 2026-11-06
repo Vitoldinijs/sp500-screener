@@ -54,3 +54,4 @@ run_time,data_date,universe_size,eligible_count,candidate,av_verdict,av_reason,a
 2026-11-03 03:29 UTC,2026-11-02,503,420,PSX,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-11-01,2,9976.99,7500.0,1
 2026-11-04 02:23 UTC,2026-11-03,503,420,DLTR,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-11-01,2,9950.82,5005.75,2
 2026-11-05 02:31 UTC,2026-11-04,503,420,TGT,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-11-01,2,10065.83,2518.05,3
+2026-11-06 02:30 UTC,2026-11-05,503,420,ABBV,confirmed,price confirmed; OVERVIEW unavailable,2,yfinance,2026-11-01,2,9681.13,1104.08,4
