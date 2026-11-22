@@ -171,6 +171,12 @@ def apply_filters(metrics: pd.DataFrame, cfg) -> pd.DataFrame:
         if require_mcap:
             fail(mcap.isna(), "market cap unavailable")
         fail(mcap < min_mcap, "market cap too small")
+        # An upper bound for a universe defined by size (small/mid caps):
+        # judged on the point-in-time market cap, so a company that grew
+        # out of the band leaves it on the day it did, not with hindsight.
+        max_mcap = _num(f.get("max_market_cap"), np.inf)
+        if np.isfinite(max_mcap):
+            fail(mcap > max_mcap, "market cap too large")
     if "net_debt_ebitda" in m:
         max_ndte = _num(f.get("max_net_debt_ebitda"), 4.0)
         # NaN (no meaningful EBITDA to compare against — common for banks,

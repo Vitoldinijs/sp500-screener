@@ -410,6 +410,40 @@ def test_leverage_cap_is_set_per_sector():
     assert not lev["IND2"]
 
 
+def test_vol_adjusted_momentum_prefers_the_steadier_trend():
+    """Same 12-1 return, very different paths: the steady one ranks higher."""
+    days = pd.bdate_range("2023-01-02", periods=400)
+    rng = np.random.default_rng(4)
+    drift = np.full(len(days), 0.0008)
+    steady = 100 * np.exp(np.cumsum(drift + rng.normal(0, 0.004, len(days))))
+    noisy = 100 * np.exp(np.cumsum(drift + rng.normal(0, 0.03, len(days))))
+    close = pd.DataFrame({"STEADY": steady, "NOISY": noisy}, index=days)
+    m = factors.price_factors(close)
+    assert np.isfinite(m.loc["STEADY", "mom_12m_1m_va"])
+    assert m.loc["STEADY", "mom_12m_1m_va"] > m.loc["NOISY", "mom_12m_1m_va"]
+    assert m.loc["STEADY", "volatility"] < m.loc["NOISY", "volatility"]
+
+
+def test_size_band_has_a_point_in_time_upper_bound():
+    cfg = _cfg()
+    cfg._d["filters"]["min_market_cap"] = 3e8
+    cfg._d["filters"]["max_market_cap"] = 1e10
+    template = {
+        "last_close": 100.0, "history_days": 500, "volatility": 0.25,
+        "dollar_volume": 5e8, "pe_ratio": 15.0, "pb_ratio": 2.0,
+        "ps_ratio": 2.0, "ev_ebitda": 10.0, "fcf_yield": 0.05, "roe": 0.15,
+        "gross_margin": 0.4, "net_margin": 0.1, "revenue_growth": 0.05,
+        "earnings_growth": 0.05, "earnings_surprise_pct": 0.02,
+        "net_debt_ebitda": 1.0, "sector": "Industrials",
+    }
+    m = pd.DataFrame([template] * 3, index=["TINY", "MID", "HUGE"])
+    m["market_cap"] = [1e8, 2e9, 5e10]
+    out = scoring.apply_filters(m, cfg)
+    assert out.loc["MID", "eligible"]
+    assert out.loc["TINY", "exclude_reason"] == "market cap too small"
+    assert out.loc["HUGE", "exclude_reason"] == "market cap too large"
+
+
 def test_single_stock_cap_bounds_the_strongest_conviction():
     """The per-name ceiling is what sets the minimum number of holdings.
 
@@ -2904,6 +2938,56 @@ def pytest_raises(exc_type):
                 raise AssertionError(f"{exc_type.__name__} not raised")
             return issubclass(et, exc_type)
     return _Ctx()
+
+
+def _fscore_company(improving: bool):
+    """Three years of filings that get steadily better — or worse."""
+    quarters = efx.fiscal_quarters(date(2019, 12, 31), 3)
+    keys = [(fy, q) for fy, q, *_ in quarters]
+    sgn = 1 if improving else -1
+    rev = {k: 1000.0 + sgn * 40 * i for i, k in enumerate(keys)}
+    gp = {k: rev[k] * (0.40 + sgn * 0.01 * i) for i, k in enumerate(keys)}
+    ni = {k: 60.0 + sgn * 15 * i for i, k in enumerate(keys)}
+    ocf = {k: ni[k] + (20.0 if improving else -30.0) for k in keys}
+    shares = {k: 1e6 * (1 - sgn * 0.02 * i) for i, k in enumerate(keys)}
+    payload = efx.build_payload(
+        quarters,
+        {"revenue": rev, "gross_profit": gp, "net_income": ni, "ocf": ocf,
+         "shares_diluted": shares},
+        tags={"gross_profit": "GrossProfit"},
+        instants={
+            "assets": {k: 10_000.0 for k in keys},
+            "assets_current": {k: 3_000.0 + sgn * 50 * i for i, k in enumerate(keys)},
+            "liabilities_current": {k: 2_000.0 for k in keys},
+            "debt_total": {k: 3_000.0 - sgn * 60 * i for i, k in enumerate(keys)},
+            "equity": {k: 5_000.0 for k in keys},
+        },
+    )
+    facts = edgar_mod.parse_companyfacts(payload)
+    _fy, _q, _fs, _qs, qe = quarters[-1]
+    return edgar_mod.state_at(facts, pd.Timestamp(qe + timedelta(days=61)))
+
+
+def test_fscore_separates_an_improving_company_from_a_deteriorating_one():
+    good = _fscore_company(improving=True)["f_score"]
+    bad = _fscore_company(improving=False)["f_score"]
+    assert good == 9.0, f"every test should pass for a uniformly improving filer: {good}"
+    assert bad <= 2.0, f"a uniformly deteriorating filer should fail nearly all: {bad}"
+
+
+def test_fscore_needs_enough_tests_to_be_meaningful():
+    """Without a balance sheet only four tests are computable — no score."""
+    quarters = efx.fiscal_quarters(date(2019, 12, 31), 3)
+    keys = [(fy, q) for fy, q, *_ in quarters]
+    payload = efx.build_payload(
+        quarters, {"revenue": {k: 1000.0 for k in keys},
+                   "net_income": {k: 50.0 for k in keys},
+                   "ocf": {k: 70.0 for k in keys},
+                   "shares_diluted": {k: 1e6 for k in keys}})
+    facts = edgar_mod.parse_companyfacts(payload)
+    _fy, _q, _fs, _qs, qe = quarters[-1]
+    state = edgar_mod.state_at(facts, pd.Timestamp(qe + timedelta(days=61)))
+    assert np.isnan(state["f_score"])
 
 
 def test_edgar_filing_states_become_available_the_day_after_each_filing():

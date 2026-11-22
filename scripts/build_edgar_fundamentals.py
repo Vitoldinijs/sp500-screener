@@ -42,7 +42,7 @@ OUTPUT = "state/cache/fundamentals_edgar.csv.gz"
 SCHEMA = ["asof", "ticker", "pe_ratio", "pb_ratio", "ps_ratio", "ev_ebitda",
           "fcf_yield", "roe", "gross_margin", "net_margin", "net_debt_ebitda",
           "revenue_growth", "earnings_growth", "market_cap",
-          "last_earnings_date", "earnings_surprise_pct"]
+          "last_earnings_date", "earnings_surprise_pct", "f_score"]
 
 # Market capitalisations known well enough to catch a split error, which
 # moves a number by the split ratio (4x, 10x, 50x), not by a few percent.

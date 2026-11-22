@@ -96,6 +96,11 @@ CONCEPTS: dict[str, tuple[str, ...]] = {
     "debt_noncurrent": ("LongTermDebtNoncurrent",),
     "debt_current": ("LongTermDebtCurrent", "DebtCurrent"),
     "short_borrowings": ("ShortTermBorrowings", "CommercialPaper"),
+    # For the Piotroski F-score: return on assets, current ratio, leverage
+    # and asset turnover all need these.
+    "assets": ("Assets",),
+    "assets_current": ("AssetsCurrent",),
+    "liabilities_current": ("LiabilitiesCurrent",),
     "cash": (
         "CashAndCashEquivalentsAtCarryingValue",
         "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
@@ -118,7 +123,16 @@ DURATION_FIELDS = {
 INSTANT_FIELDS = {
     "equity", "debt_total", "debt_noncurrent", "debt_current",
     "short_borrowings", "cash", "shares_outstanding",
+    "assets", "assets_current", "liabilities_current",
 }
+
+# A filer must have at least this many of the nine F-score tests computable;
+# the score is then rescaled to the 0-9 range. Banks and insurers have no
+# gross margin and no current/non-current split, so they land on seven.
+FSCORE_MIN_TESTS = 7
+# Share-count growth tolerated before test 7 ("no new equity") fails: diluted
+# weighted averages drift a little with option exercise alone.
+FSCORE_ISSUANCE_TOL = 0.01
 
 FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "20-F", "20-F/A", "40-F"}
 SHARE_UNITS = {"shares"}
@@ -351,24 +365,19 @@ def state_at(facts: pd.DataFrame, cutoff: pd.Timestamp) -> dict | None:
         gross = revenue - cost if np.isfinite(revenue) and np.isfinite(cost) else np.nan
     capex = ttm(d["capex"], end)
 
-    debt = _instant(v, "debt_total", end)
-    if not np.isfinite(debt):
-        parts = [_instant(v, "debt_noncurrent", end), _instant(v, "debt_current", end)]
-        debt = sum(p for p in parts if np.isfinite(p)) if any(np.isfinite(p) for p in parts) else np.nan
-    short = _instant(v, "short_borrowings", end)
-    if np.isfinite(short):
-        debt = (debt if np.isfinite(debt) else 0.0) + short
-
+    debt = _debt(v, end)
     shares, shares_filed = _shares(v, end)
+    net_income = ttm(d["net_income"], end)
+    ocf = ttm(d["ocf"], end)
     return {
         "period_end": end,
         "filed": v["filed"].max(),
         "revenue_ttm": revenue,
         "gross_profit_ttm": gross,
         "operating_income_ttm": ttm(d["operating_income"], end),
-        "net_income_ttm": ttm(d["net_income"], end),
+        "net_income_ttm": net_income,
         "dna_ttm": ttm(d["dna"], end),
-        "ocf_ttm": ttm(d["ocf"], end),
+        "ocf_ttm": ocf,
         # A filer that reports no capex tag is treated as zero capex rather
         # than as unknown cash flow; banks are the usual case.
         "capex_ttm": capex if np.isfinite(capex) else 0.0,
@@ -381,7 +390,81 @@ def state_at(facts: pd.DataFrame, cutoff: pd.Timestamp) -> dict | None:
         "cash": _instant(v, "cash", end),
         "shares": shares,
         "shares_filed": shares_filed,
+        "f_score": _fscore(v, d, end, flows, revenue, gross, net_income, ocf,
+                           debt, shares),
     }
+
+
+def _debt(v: pd.DataFrame, end: pd.Timestamp) -> float:
+    debt = _instant(v, "debt_total", end)
+    if not np.isfinite(debt):
+        parts = [_instant(v, "debt_noncurrent", end), _instant(v, "debt_current", end)]
+        debt = sum(p for p in parts if np.isfinite(p)) if any(np.isfinite(p) for p in parts) else np.nan
+    short = _instant(v, "short_borrowings", end)
+    if np.isfinite(short):
+        debt = (debt if np.isfinite(debt) else 0.0) + short
+    return debt
+
+
+def _ratio(a, b):
+    return a / b if np.isfinite(a) and np.isfinite(b) and b > 0 else np.nan
+
+
+def _fscore(v, d, end, flows, revenue, gross, net_income, ocf, debt, shares) -> float:
+    """Piotroski's F-score (2000) from what was filed by the cut-off.
+
+    Nine pass/fail tests that the business is getting stronger year on year:
+    profitable, cash-generative, more profitable than a year ago, earnings
+    backed by cash, less leverage, more liquidity, no new shares, better
+    margin, better asset turnover. Published evidence is strongest among
+    cheap small companies, which is where this score is meant to be used.
+
+    Last year's figures are read from the SAME cut-off, so restated
+    comparatives — split-adjusted share counts above all — are compared
+    like with like rather than against what was filed a year earlier.
+    """
+    ends = flows[_between(end - flows["end"], pd.Timedelta(days=YEAR_BACK[0]),
+                          pd.Timedelta(days=YEAR_BACK[1]))]["end"]
+    if ends.empty:
+        return np.nan
+    prev = ends.max()
+
+    rev_p = ttm(d["revenue"], prev)
+    gross_p = ttm(d["gross_profit"], prev)
+    if not np.isfinite(gross_p):
+        cost_p = ttm(d["cost_of_revenue"], prev)
+        gross_p = rev_p - cost_p if np.isfinite(rev_p) and np.isfinite(cost_p) else np.nan
+    ni_p = ttm(d["net_income"], prev)
+    assets, assets_p = _instant(v, "assets", end), _instant(v, "assets", prev)
+    cr = _ratio(_instant(v, "assets_current", end), _instant(v, "liabilities_current", end))
+    cr_p = _ratio(_instant(v, "assets_current", prev), _instant(v, "liabilities_current", prev))
+    shares_p, _ = _shares(v, prev)
+
+    roa, roa_p = _ratio(net_income, assets), _ratio(ni_p, assets_p)
+    lev = _ratio(debt, assets) if np.isfinite(debt) else np.nan
+    debt_p = _debt(v, prev)
+    lev_p = _ratio(debt_p, assets_p) if np.isfinite(debt_p) else np.nan
+    gm, gm_p = _ratio(gross, revenue), _ratio(gross_p, rev_p)
+    turn, turn_p = _ratio(revenue, assets), _ratio(rev_p, assets_p)
+
+    def test(ok, *inputs):
+        return float(ok) if all(np.isfinite(x) for x in inputs) else np.nan
+
+    tests = [
+        test(roa > 0, roa),
+        test(ocf > 0, ocf),
+        test(roa > roa_p, roa, roa_p),
+        test(ocf > net_income, ocf, net_income),
+        test(lev < lev_p, lev, lev_p) if not (lev == 0 and lev_p == 0) else 1.0,
+        test(cr > cr_p, cr, cr_p),
+        test(shares <= shares_p * (1 + FSCORE_ISSUANCE_TOL), shares, shares_p),
+        test(gm > gm_p, gm, gm_p),
+        test(turn > turn_p, turn, turn_p),
+    ]
+    done = [t for t in tests if np.isfinite(t)]
+    if len(done) < FSCORE_MIN_TESTS:
+        return np.nan
+    return round(sum(done) * 9.0 / len(done), 3)
 
 
 def filing_states(facts: pd.DataFrame) -> pd.DataFrame:
@@ -435,6 +518,8 @@ def ratios(frame: pd.DataFrame) -> pd.DataFrame:
         "revenue_growth": _safe_div(f["revenue_q"], f["revenue_q_prior"]) - 1.0,
         "earnings_growth": _safe_div(f["net_income_q"] - prior_ni, prior_ni.abs()),
         "market_cap": mcap,
+        "f_score": pd.to_numeric(f["f_score"], errors="coerce")
+        if "f_score" in f.columns else np.nan,
     }, index=f.index)
     return out.replace([np.inf, -np.inf], np.nan)
 

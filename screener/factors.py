@@ -142,6 +142,16 @@ def price_factors(
                     dvol = float(aligned.tail(20).mean())
 
         rsi14 = rsi(col_full, 14)
+        # 12-1 momentum per unit of the same year's volatility. Raw momentum
+        # is largest in magnitude for the most volatile names, so averaging
+        # its z-score with others pushes volatile stocks to BOTH ends of the
+        # ranking — the U-shaped decile profile the 2020-2026 IC study found.
+        # Dividing by volatility ranks the steadiness of the trend instead.
+        vol252 = (float(rets.tail(252).std() * np.sqrt(252))
+                  if len(rets) >= 200 else np.nan)
+        mom12 = _ret(col, H_12M - H_1M, skip=H_1M)
+        mom12_va = (mom12 / vol252 if np.isfinite(mom12) and np.isfinite(vol252)
+                    and vol252 > 0 else np.nan)
         rows[ticker] = {
             "last_close": last,
             # Counted over the whole history, not the slice, so the
@@ -150,7 +160,8 @@ def price_factors(
             "mom_1m": _ret(col, H_1M),
             "mom_3m": _ret(col, H_3M),
             "mom_6m": _ret(col, H_6M),
-            "mom_12m_1m": _ret(col, H_12M - H_1M, skip=H_1M),
+            "mom_12m_1m": mom12,
+            "mom_12m_1m_va": mom12_va,
             # Research diagnostics: the 3- and 6-month windows WITHOUT their
             # most recent month. mom_3m and mom_6m above include it, and the
             # last month is the one horizon where returns reliably reverse

@@ -113,7 +113,9 @@ def build_payload(quarters, values: dict, *, tags: dict | None = None,
                         add(tag, unit, _fact(fs, e, ytd, filed, form))
             for field, series in (instants or {}).items():
                 tag = {"equity": "StockholdersEquity", "cash": "CashAndCashEquivalentsAtCarryingValue",
-                       "debt_total": "LongTermDebt"}[field]
+                       "debt_total": "LongTermDebt", "assets": "Assets",
+                       "assets_current": "AssetsCurrent",
+                       "liabilities_current": "LiabilitiesCurrent"}[field]
                 add(tag, "USD", _fact(None, qe, series[(fy, q)], filed, form))
 
     for (field, fy, q), (new_value, filed_date) in (restate or {}).items():
