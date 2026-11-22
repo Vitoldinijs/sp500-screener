@@ -2160,6 +2160,39 @@ def test_absent_macro_block_reports_which_gate_closed():
     )
 
 
+def test_ledger_widens_for_a_new_column_instead_of_dropping_it():
+    """The live ledger predates the macro block; block_macro must be kept.
+
+    Aligning to the old header dropped it every day. A new column now widens
+    the file once: old rows read back empty, new rows carry the value, and
+    nothing shifts.
+    """
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    tickers = ["AAA", "BBB"]
+    with tempfile.TemporaryDirectory() as td:
+        cfg.root = Path(td)
+        path = cfg.path("decision_history_csv")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        first = _ledger_scored(tickers, z_macro=False)
+        pipeline._append_decision_history(
+            cfg, first, state, pd.Timestamp("2020-01-02"), None, [], {})
+        # Simulate a file written before the macro block existed.
+        old = pd.read_csv(path).drop(columns=["block_macro"])
+        old.to_csv(path, index=False)
+        second = _ledger_scored(tickers, z_macro=False)
+        second["block_macro"] = [0.7, -0.3]
+        pipeline._append_decision_history(
+            cfg, second, state, pd.Timestamp("2020-01-03"), None, [], {})
+        back = pd.read_csv(path)
+    assert "block_macro" in back.columns
+    day1 = back[back["data_date"] == "2020-01-02"]
+    day2 = back[back["data_date"] == "2020-01-03"].set_index("ticker")
+    assert day1["block_macro"].isna().all()
+    assert list(day2.loc[tickers, "block_macro"]) == [0.7, -0.3]
+    assert list(day2.loc[tickers, "composite"]) == list(second.loc[tickers, "composite"])
+
+
 def _credit_macro(baa: list[float] | None, hy: list[float] | None):
     """Macro frame carrying either or both credit spreads."""
     rows = []

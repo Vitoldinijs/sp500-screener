@@ -502,10 +502,25 @@ def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
                 pd.errors.EmptyDataError):
             header = []
         if header:
-            dropped = [c for c in fresh.columns if c not in header]
-            if dropped:
-                _log(f"decision history: {len(dropped)} column(s) not in the "
-                     f"existing header were left out: {', '.join(dropped[:5])}")
+            added = [c for c in fresh.columns if c not in header]
+            if added:
+                # A new column (block_macro, when the macro block was added
+                # after this file was created) must widen the file, not be
+                # dropped: dropping it lost the macro block from the live
+                # ledger every day for three weeks. Rewrite once with the
+                # wider header — old rows read back empty in the new column —
+                # and from then on every append lines up again.
+                try:
+                    old = pd.read_csv(path, dtype=str, keep_default_na=False)
+                    for col in added:
+                        old[col] = ""
+                    old.to_csv(path, index=False)
+                    header = header + added
+                    _log(f"decision history: widened with new column(s): "
+                         f"{', '.join(added[:5])}")
+                except (ValueError, OSError, pd.errors.ParserError) as exc:
+                    _log(f"decision history: could not widen ({exc}); "
+                         f"left out {', '.join(added[:5])}")
             fresh = fresh.reindex(columns=header)
 
     if not existing.empty and {"data_date", "ticker"}.issubset(existing.columns):
