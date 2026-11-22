@@ -176,7 +176,22 @@ def apply_filters(metrics: pd.DataFrame, cfg) -> pd.DataFrame:
         # NaN (no meaningful EBITDA to compare against — common for banks,
         # insurers, REITs) compares as False here, so it passes rather than
         # being penalised for a metric that doesn't apply to it.
-        fail(col("net_debt_ebitda") > max_ndte, f"leverage > {max_ndte:g}x EBITDA")
+        # Some sectors run on debt by design: a regulated utility or a REIT
+        # at 5-6x is ordinary, and one flat 4x cap removed 28 utilities and
+        # 27 REITs — nearly both sectors — every day. Per-sector caps replace
+        # the global one where configured; null means no leverage test at
+        # all (financials, whose EBITDA does not mean anything).
+        overrides = dict(f.get("max_net_debt_ebitda_by_sector") or {})
+        ndte = col("net_debt_ebitda")
+        sector = (m["sector"].astype(str) if "sector" in m.columns
+                  else pd.Series("", index=m.index))
+        default_mask = ~sector.isin(list(overrides))
+        fail(default_mask & (ndte > max_ndte), f"leverage > {max_ndte:g}x EBITDA")
+        for name, cap in overrides.items():
+            if cap is None:
+                continue
+            cap = _num(cap, max_ndte)
+            fail((sector == name) & (ndte > cap), f"leverage > {cap:g}x EBITDA")
 
     # Fundamental coverage: count how many of the configured fundamental
     # metrics are missing for each name.

@@ -729,13 +729,59 @@ class Ladder:
         if np.isfinite(value):
             self.exposure = min(1.0, max(0.0, value))
 
+    def schedule_exposure_trim(self) -> list[dict]:
+        """Bring an over-invested book down to the regime's exposure target.
+
+        Without this the regime only blocked new buys: on 2026-11-20 it put
+        exposure at 59% while the book stayed 100% invested through an 8.7%
+        market fall. The owner's rule is "at least 30% in a bad market", which
+        is a ceiling that should bind, not just a brake on entries.
+
+        Hysteresis keeps it from churning: nothing happens until invested
+        capital exceeds the target by `trim_band` (10 points by default), and
+        then the book is cut to the target in one go, pro rata, so the
+        ranking's relative weights are preserved. Positions already being sold
+        or resized are left alone. Off unless regime.trim_above_target.
+        """
+        rc = self.cfg.get("regime") or {}
+        if not rc.get("enabled", True) or not rc.get("trim_above_target", False):
+            return []
+        band = max(0.0, float(rc.get("trim_band", 0.10)))
+        equity = self.s.equity()
+        if equity <= 0:
+            return []
+        busy = {o.get("trade_id") for o in self.s.pending_orders
+                if o.get("side") in ("SELL", "REBALANCE")}
+        held = [p for p in self.s.positions if p.get("trade_id") not in busy]
+        invested = sum(float(p.get("last_value", p.get("cost_basis", 0.0))) for p in held)
+        locked = self.s.positions_value() - invested       # being sold/resized already
+        if invested <= 0 or (invested + locked) <= equity * (self.exposure + band):
+            return []
+        factor = max(0.0, (equity * self.exposure - locked) / invested)
+        min_notional = max(0.0, float(self.cfg.strategy.get("rebalance_min_notional", 50.0)))
+        orders = []
+        for p in held:
+            current = float(p.get("last_value", p.get("cost_basis", 0.0)))
+            target = current * factor
+            if current - target < min_notional:
+                continue
+            orders.append({
+                "side": "REBALANCE", "action": "reduce",
+                "ticker": p["ticker"], "trade_id": p.get("trade_id"),
+                "target_value": round(target, 2), "current_value": round(current, 2),
+                "notional": 0.0,
+                "reason": f"regime exposure trim to {self.exposure:.0%}",
+            })
+        self.s.pending_orders.extend(orders)
+        return orders
+
     def _exposure_room(self, equity: float) -> float:
         """Headroom to the regime's invested-capital ceiling.
 
-        Deliberately one-directional: when exposure drops, this stops NEW
-        buying but never forces a sale. Liquidating into a weak tape is how
-        a timing rule turns a drawdown into a realised loss, and exits here
-        remain the job of the signal review and the drawdown breaker.
+        On its own this only stops NEW buying when exposure drops; cutting an
+        over-invested book is schedule_exposure_trim's job (when enabled).
+        Exits on weak signals remain the job of the signal review and the
+        drawdown breaker.
         """
         invested = self.s.positions_value()
         pending = sum(float(o.get("notional", 0.0))
@@ -943,6 +989,21 @@ class Ladder:
             }
             (increases if difference > 0 else reductions).append(order)
 
+        # Increases must respect the regime ceiling like new buys do; otherwise
+        # a trim to target would be bought straight back at the next resize.
+        room = self._exposure_room(self.s.equity())
+        capped = []
+        for order in sorted(increases, key=lambda o: -o["notional"]):
+            if room < min_notional:
+                break
+            take = min(order["notional"], room)
+            if take < order["notional"]:
+                order["notional"] = round(take, 2)
+                order["target_value"] = round(order["current_value"] + take, 2)
+            room -= take
+            capped.append(order)
+        increases = capped
+
         # Keep de-risking reductions, but do not add exposure while entries are paused.
         queued = reductions + (increases if not self.s.drawdown_paused else [])
         self.s.pending_orders.extend(queued)
@@ -971,6 +1032,12 @@ class Ladder:
         if self.s.drawdown_paused:
             events.extend(self._cancel_risk_increasing_orders())
         exits = self.schedule_exits(scored)
+        # After exits, so names already leaving are not trimmed as well; before
+        # entries and resizes, so neither can spend the room a trim frees.
+        trims = self.schedule_exposure_trim()
+        for t in trims:
+            events.append({"event": "exposure_trim_queued", "ticker": t["ticker"],
+                           "target_value": t["target_value"], "reason": t["reason"]})
         entry = self.schedule_entry(
             shortlist or [], name_map, signal_date=trade_date, scored=scored
         )
@@ -982,6 +1049,7 @@ class Ladder:
             "exits_queued": len(exits),
             "entry_queued": entry["ticker"] if entry else None,
             "rebalances_queued": len(rebalances),
+            "exposure_trims_queued": len(trims),
             "cash": round(self.s.cash, 2),
             "positions": len(self.s.positions),
             "equity": round(self.s.equity(), 2),

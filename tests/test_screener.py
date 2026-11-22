@@ -311,6 +311,105 @@ def test_rebalance_targets_obey_single_name_and_sector_caps():
     assert all(value <= 2_000.0 + 0.01 for value in targets.values())
 
 
+def _full_book(cfg, n=4, value=2_500.0):
+    state = portfolio.PortfolioState.new(10_000.0)
+    state.cash = 10_000.0 - n * value
+    state.bar_count = 20
+    state.positions = [
+        {"trade_id": i + 1, "ticker": t, "sector": "Tech", "shares": value / 100.0,
+         "entry_price": 100.0, "cost_basis": value, "last_value": value,
+         "allocation_weight": 1.0, "entry_bar": 0}
+        for i, t in enumerate(["AAA", "BBB", "CCC", "DDD"][:n])]
+    return state
+
+
+def test_regime_trims_an_overinvested_book_to_target_pro_rata():
+    """The 2026-11-20 case: target 59%, book 100% invested, nothing sold."""
+    cfg = _cfg()
+    cfg._d["regime"]["trim_above_target"] = True
+    cfg._d["regime"]["trim_band"] = 0.10
+    state = _full_book(cfg)
+    ladder = portfolio.Ladder(cfg, state)
+    ladder.set_exposure(0.59)
+    orders = ladder.schedule_exposure_trim()
+    assert len(orders) == 4
+    assert all(o["side"] == "REBALANCE" and o["action"] == "reduce" for o in orders)
+    assert abs(sum(o["target_value"] for o in orders) - 5_900.0) < 1.0
+    # Pro rata: every holding cut by the same fraction.
+    assert len({o["target_value"] for o in orders}) == 1
+
+    # Executed at the next open, the book lands on the target.
+    bar = pd.DataFrame({"open": [100.0] * 4, "close": [100.0] * 4},
+                       index=["AAA", "BBB", "CCC", "DDD"])
+    ladder.fill_pending(bar, date(2026, 11, 23))
+    ladder.mark_to_market(bar)
+    assert abs(state.positions_value() / state.equity() - 0.59) < 0.01
+
+
+def test_regime_trim_has_a_band_and_can_be_switched_off():
+    cfg = _cfg()
+    cfg._d["regime"]["trim_above_target"] = True
+    cfg._d["regime"]["trim_band"] = 0.10
+    ladder = portfolio.Ladder(cfg, _full_book(cfg))
+    ladder.set_exposure(0.92)            # 100% invested, within 10 points
+    assert ladder.schedule_exposure_trim() == []
+    cfg._d["regime"]["trim_above_target"] = False
+    ladder = portfolio.Ladder(cfg, _full_book(cfg))
+    ladder.set_exposure(0.30)
+    assert ladder.schedule_exposure_trim() == []
+
+
+def test_resizes_cannot_buy_back_what_the_regime_trimmed():
+    """Increases now respect the exposure ceiling, like new entries."""
+    cfg = _cfg()
+    state = _full_book(cfg, value=1_500.0)    # 60% invested, 40% cash
+    ladder = portfolio.Ladder(cfg, state)
+    ladder.set_exposure(0.60)
+    scored = pd.DataFrame(
+        {"eligible": [True] * 4, "composite": [4.0, 3.0, 2.0, 1.0],
+         "rank": [1, 2, 3, 4], "exclude_reason": [""] * 4},
+        index=["AAA", "BBB", "CCC", "DDD"])
+    orders = ladder.schedule_rebalances(scored)
+    added = sum(o["notional"] for o in orders if o["action"] == "increase")
+    removed = sum(o["current_value"] - o["target_value"]
+                  for o in orders if o["action"] == "reduce")
+    assert added <= removed + 1.0, (
+        f"resizes added {added:.0f} of exposure above the 60% ceiling")
+
+
+def test_leverage_cap_is_set_per_sector():
+    """One flat 4x cap removed nearly every utility and REIT."""
+    cfg = _cfg()
+    # One name that passes every other filter, copied six times with only
+    # sector and leverage changed: the filter records the FIRST failing
+    # reason, so a thin frame would fail on price data before leverage was
+    # ever looked at and every assertion below would pass by accident.
+    template = {
+        "last_close": 100.0, "history_days": 500, "volatility": 0.25,
+        "dollar_volume": 5e8, "market_cap": 5e10, "pe_ratio": 15.0,
+        "pb_ratio": 2.0, "ps_ratio": 2.0, "ev_ebitda": 10.0, "fcf_yield": 0.05,
+        "roe": 0.15, "gross_margin": 0.4, "net_margin": 0.1,
+        "revenue_growth": 0.05, "earnings_growth": 0.05,
+        "earnings_surprise_pct": 0.02, "mom_12m_1m": 0.1,
+    }
+    names = ["UT1", "UT2", "RE1", "IND1", "FIN1", "IND2"]
+    m = pd.DataFrame([template] * len(names), index=names)
+    m["sector"] = ["Utilities", "Utilities", "Real Estate", "Industrials",
+                   "Financials", "Industrials"]
+    m["net_debt_ebitda"] = [6.0, 7.5, 7.5, 6.0, 25.0, 3.0]
+    out = scoring.apply_filters(m, cfg)
+    assert out.loc["IND2", "eligible"], (
+        f"template must pass every filter: {out.loc['IND2', 'exclude_reason']!r}")
+    reason = out["exclude_reason"].fillna("").astype(str)
+    lev = reason.str.contains("leverage")
+    assert not lev["UT1"], "a utility at 6x is ordinary"
+    assert lev["UT2"], "a utility at 7.5x is not"
+    assert not lev["RE1"], "a REIT at 7.5x is within its sector's cap"
+    assert lev["IND1"], "the global 4x cap still applies elsewhere"
+    assert not lev["FIN1"], "financials have no leverage test"
+    assert not lev["IND2"]
+
+
 def test_single_stock_cap_bounds_the_strongest_conviction():
     """The per-name ceiling is what sets the minimum number of holdings.
 

@@ -66,6 +66,10 @@ filters:
   max_net_debt_ebitda: 4.0      # leverage cap; NaN (e.g. banks/REITs w/o a
                                  # meaningful EBITDA) passes through, only a
                                  # name that REPORTS >4x is excluded
+  max_net_debt_ebitda_by_sector:  # sectors that run on debt by design
+    Utilities: 7.0              # regulated utilities sit at 5-6.5x normally
+    Real Estate: 8.0            # REITs at 5-7x; only stressed ones fail
+    Financials: null            # EBITDA meaningless: no leverage test
 
 # ---- Factor blocks ---------------------------------------------------------
 # Composite score = sum(block_weight * block_z). Block z = mean of its
@@ -215,6 +219,12 @@ regime:
   enabled: true
   min_exposure: 0.30            # floor in the worst assessed conditions
   max_exposure: 1.00
+  # Cut an over-invested book down to the target, not just stop buying.
+  # Only once invested capital is `trim_band` above target, then all the
+  # way to it, pro rata across holdings — so a few points of daily drift
+  # in the target cause no trading.
+  trim_above_target: true
+  trim_band: 0.10
   trend_window: 200             # sessions for the benchmark moving average
   weights:
     trend: 0.50                 # benchmark vs its long average — most robust
