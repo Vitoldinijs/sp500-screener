@@ -1,0 +1,297 @@
+# ============================================================================
+#  Small/mid-cap Paper-Trading Screener — configuration
+#  Same engine as config.yml, different universe and signals:
+#    python -m screener daily --config config_smallcap.yml
+#
+#  Universe: US-listed common stocks between $300M and $10B market cap,
+#  judged point-in-time every session (filters below). Below that is penny-
+#  stock territory the owner ruled out; above it the market is efficient
+#  enough that the 2020-2026 S&P 500 study found no stock-selection edge.
+#  Small and mid caps are where the published anomalies are strongest and
+#  where large funds cannot follow: a $300M company cannot absorb a position
+#  that matters to a $5B fund.
+#
+#  Signals are chosen from published evidence, NOT fitted to backtest data:
+#  value and quality (with Piotroski's F-score) carry most of the weight;
+#  momentum is the established 12-1 measure divided by volatility, so the
+#  ranking stops collecting volatile names at both ends. Fundamentals come
+#  from SEC filings (scripts/build_edgar_fundamentals.py), point-in-time.
+# ============================================================================
+
+strategy:
+  name: "smallmid-value-quality"
+  start_capital: 10000.0        # virtual USD
+  # Position COUNT is an output, not an input. There is no slot target: the
+  # portfolio deploys (1 - cash_reserve_pct) of equity across the names that
+  # score best, sizes each by conviction around target_position_pct_equity,
+  # and stops when the money runs out. With a 20% base and a 25% ceiling that
+  # settles around 4-6 holdings, more when conviction is evenly spread.
+  #
+  # Trade-off being accepted here, on purpose: concentration cuts breadth,
+  # and for a cross-sectional factor screen breadth is where the edge lives
+  # (IR ~ IC x sqrt(N)). Going from ~21 names to ~4 divides the information
+  # ratio by roughly 2.3 and multiplies idiosyncratic risk several-fold.
+  # The intent is a portfolio that expresses conviction; the backtest is the
+  # place to check what that costs.
+  target_position_pct_equity: 0.20  # base size before conviction scaling
+  max_concurrent_positions: 25  # safety rail against degenerate dust, not a target
+  min_position_notional: 250.0  # never open a position smaller than this
+  exit_rank_percentile_below: 0.35  # signal is weak below this relative-score percentile
+  exit_confirmation_observations: 3  # consecutive reviews needed before a signal-based exit
+  buys_per_day: 1               # one new entry per trading day
+  allow_duplicate_tickers: false
+  max_positions_per_sector: 5   # hard count cap by sector
+  max_position_pct_equity: 0.25 # hard ceiling for one stock. This is what sets the
+                                 # MINIMUM number of holdings: 25% -> at least 4.
+  max_portfolio_drawdown_pct: 0.20 # pause new buys after a 20% drawdown from peak equity
+  drawdown_resume_below_pct: 0.12 # resume new buys only after drawdown recovers to 12% or less
+  drawdown_pause_max_sessions: 60 # hard cap on how long the breaker may stay
+                                   # latched. Without it the breaker deadlocks:
+                                   # it blocks the buying needed to recover, so
+                                   # the drawdown never clears and entries stay
+                                   # frozen forever. Seen in the 2024-2026
+                                   # replay — latched 2025-02-28, never released,
+                                   # 420 of 711 sessions with no entries.
+  max_sector_pct_equity: 0.50   # raised with the position cap: at 25% per name a
+                                 # 25% sector cap would have allowed only one
+                                 # holding per sector, forcing 4 names into 4
+                                 # different sectors regardless of the scores
+  cash_reserve_pct: 0.10        # target cash buffer; the rest is allocated to open slots
+  allocation_min_multiplier: 0.60 # relative target weight for the weakest eligible rank
+  allocation_max_multiplier: 1.80 # relative target weight for the strongest eligible rank
+  allocation_rank_power: 1.50   # makes top-ranked stocks receive meaningfully larger targets
+  rebalance_threshold_pct: 0.15 # rebalance only when target differs by at least 15%
+  rebalance_interval_sessions: 5 # at most one rebalance per position per 5 sessions
+  rebalance_min_notional: 50.0  # ignore tiny adjustments
+  execution: "next_open"        # fills at next session's open (no lookahead)
+  slippage_bps: 15.0            # small caps trade on wider spreads than the S&P
+  commission_per_trade: 0.0     # US brokers are mostly commission-free
+  fractional_shares: true
+
+# ---- Hard eligibility filters (applied before scoring) ---------------------
+filters:
+  min_price: 5.0                # avoid sub-$5 names
+  min_dollar_volume: 1000000    # 20-day avg $ volume: plenty for a paper book
+                                 # this size, without excluding the less-traded
+                                 # names where mispricing is most likely
+  require_dollar_volume: true   # missing liquidity data blocks new entries
+  min_market_cap: 300000000     # $300M: no penny stocks
+  max_market_cap: 10000000000   # $10B: above this is large-cap territory
+  require_market_cap: true      # no price-only entries without a valid market cap
+  min_history_days: 200         # need enough bars for MA200 / momentum
+  max_missing_fundamentals: 3   # skip names missing too many ratios
+  max_net_debt_ebitda: 4.0      # leverage cap; NaN (e.g. banks/REITs w/o a
+                                 # meaningful EBITDA) passes through, only a
+                                 # name that REPORTS >4x is excluded
+  max_net_debt_ebitda_by_sector:  # sectors that run on debt by design
+    Utilities: 7.0              # regulated utilities sit at 5-6.5x normally
+    Real Estate: 8.0            # REITs at 5-7x; only stressed ones fail
+    Financials: null            # EBITDA meaningless: no leverage test
+
+# ---- Factor blocks ---------------------------------------------------------
+# Composite score = sum(block_weight * block_z). Block z = mean of its
+# winsorized, cross-sectional z-scored metrics (sign-adjusted so higher=better).
+# value/quality/growth are slow-moving, multi-quarter signals trimmed down to
+# make room for the additions below (all validated in the literature
+# specifically at the 1-3 month horizon this bot trades):
+#   earnings   -> post-earnings-announcement drift (PEAD)
+#   risk       -> low-volatility tilt (defensive, dampens ladder-wide drawdowns)
+#   technical  -> short-term entry timing (RSI + MACD). Deliberately its own
+#                 block, not folded into momentum: it's a contrarian pullback
+#                 signal layered ON TOP OF the trend call, not another vote
+#                 for the trend itself — see the comment on rsi14 below.
+# Weights from the literature's ordering of evidence among small caps, set
+# once and not tuned: value and quality first, momentum next, growth and
+# macro as smaller inputs. The earnings block is absent — consensus estimates
+# are not in SEC filings — and so are risk and technical, which showed no
+# information in the S&P study and are not where the small-cap evidence is.
+factor_weights:
+  value: 0.30
+  quality: 0.30
+  momentum: 0.20
+  growth: 0.10
+  macro: 0.10
+
+# Per-metric direction: +1 means higher raw value is better, -1 means lower.
+metric_direction:
+  # value
+  pe_ratio: -1
+  pb_ratio: -1
+  ev_ebitda: -1
+  ps_ratio: -1
+  fcf_yield: 1
+  # quality
+  roe: 1
+  gross_margin: 1
+  net_margin: 1
+  # net_debt_ebitda is no longer scored here — it moved to filters.
+  # Leverage is a downside-risk gate, not something that should earn a name
+  # extra composite score for being conservative.
+  # growth
+  revenue_growth: 1
+  earnings_growth: 1
+  # momentum
+  mom_3m: 1
+  mom_6m: 1
+  mom_12m_1m: 1        # 12-month return skipping the most recent month
+  above_ma200: 1
+  above_ma50: 1          # faster trend confirmation, complements ma200
+  dist_52w_high: 1       # George & Hwang (2004): proximity to 52w high
+  # earnings (PEAD)
+  earnings_surprise_pct: 1   # gated to the last ~quarter, see factors.py
+  # risk
+  volatility: -1          # lower realised vol scores better (low-vol anomaly)
+  # macro — see screener/macro_factors.py. The scored value is already a
+  # signed expected-return contribution (beta x driver trend), so higher is
+  # simply better and no direction flip is needed.
+  macro_tilt: 1
+  # technical (short-term entry timing — deliberately kept OUT of the
+  # momentum block: this is a contrarian/mean-reversion pair, not a
+  # trend-following one, and averaging it in with mom_12m_1m etc. would
+  # partly cancel exactly the trend signal that block exists to capture)
+  rsi14: -1               # lower (more oversold) scores better, by request
+  macd_hist: 1            # normalised MACD histogram; positive = bullish cross
+  f_score: 1              # Piotroski: 0-9 tests that the business is improving
+  mom_12m_1m_va: 1        # 12-1 momentum per unit of volatility
+
+# Unused blocks stay as empty lists: parts of the engine index them by name.
+metric_blocks:
+  value: [pe_ratio, pb_ratio, ev_ebitda, ps_ratio, fcf_yield]
+  quality: [roe, gross_margin, f_score]
+  growth: [revenue_growth, earnings_growth]
+  momentum: [mom_12m_1m_va]
+  earnings: []
+  risk: []
+  technical: []
+  macro: [macro_tilt]
+
+# Computed every day but in no block, so they change no score. They exist to
+# test alternatives against the live metrics in a research replay:
+#   mom_1m     the last month alone — the horizon where returns reverse
+#   mom_3m_1m  / mom_6m_1m  the 3- and 6-month windows WITHOUT that month
+diagnostic_metrics: [mom_1m, mom_12m_1m, mom_3m_1m, mom_6m_1m, volatility]
+
+# Write per-metric z-scores into the decision ledger. Off for the live system
+# (the ledger is committed daily and this roughly doubles its growth); the
+# backtest switches it on in its private copy of this file.
+ledger_metric_columns: false
+
+winsorize_pct: 0.02            # clip each metric tail at 2% before z-scoring
+
+# ---- Sector-neutral scoring ------------------------------------------------
+# Blocks listed here are z-scored WITHIN each GICS sector instead of across
+# the whole market, so a name is compared to its peers rather than to the
+# index. Without this, value is largely a bet on structurally cheap sectors
+# (Energy, Financials) and quality a bet on asset-light ones (software's 80%
+# gross margin vs a grocer's 25%) — neither of which says the company is
+# better than its competitors. Momentum and technical are left market-wide on
+# purpose: a whole sector trending is a real effect worth riding, not a
+# confound. Earnings (PEAD) is a surprise vs expectations, already relative.
+# NOTE: `macro` is deliberately absent from this list. Producing sector
+# tilts is exactly what that block is for — oil trending up should lift
+# oil-sensitive names and with them the Energy sector. Neutralising it
+# would cancel the effect it exists to create.
+sector_neutral_blocks: [value, quality, growth]
+sector_neutral_min_names: 5    # sectors thinner than this fall back to
+                                # market-wide scoring; a 2-3 name group has a
+                                # near-zero spread that would otherwise turn
+                                # trivial differences into extreme z-scores
+
+# ---- Self-learning ---------------------------------------------------------
+learning:
+  enabled: false                # off: weights stay as set above until the
+                                 # forward paper record is long enough to judge
+  mode: "lifecycle"              # uses linked, completed paper-trade outcomes
+  weight_min: 0.05              # no block weight may fall below this
+  weight_max: 0.50              # ...or exceed this
+  max_step_per_month: 0.05      # retained for future event-based learner
+  lookback_months: 18           # walk-forward training window
+  validation_months: 3          # out-of-sample check window
+  min_trades_for_update: 40     # guardrail for a future learner
+  min_trades_for_evaluation: 40 # minimum usable completed trades for assessment
+  min_training_trades: 20       # strict pre-validation sample size
+  min_validation_trades: 10     # minimum later-period sample size
+  validation_fraction: 0.30     # latest signal dates held out for temporal review
+  min_factor_observations: 8    # minimum pairs before trusting a block correlation
+  min_validation_ic_improvement: 0.01 # held-out Spearman IC must improve by at least 0.01
+  rollback_if_worse: true       # reject proposals that fail the held-out check
+
+# ---- Macro sensitivities ---------------------------------------------------
+# Betas of each stock's weekly returns to weekly changes in the macro
+# drivers, scored against where those drivers are currently heading. A macro
+# LEVEL is identical for every company and would score zero for all of them;
+# a SENSITIVITY differs company by company, including within a sector.
+macro_factors:
+  window_weeks: 104             # ~2 years of weekly observations for the fit
+  min_observations: 60          # below this a name gets no beta rather than a bad one
+  trend_lookback_weeks: 13      # ~1 quarter of driver direction
+
+# ---- Market regime: how much to be invested at all -------------------------
+# The composite score is cross-sectional and cannot answer "is now a bad time
+# to own stocks" — in a falling market the best-ranked name still scores
+# highly, because its peers are falling too. This block is the separate,
+# market-level input that lets the ladder sit in cash and wait.
+#
+# Output is the fraction of equity the ladder may deploy, glided between
+# min_exposure and max_exposure. It never reaches zero on purpose: a rule
+# allowed to go fully to cash eventually does so just before a rebound, and
+# timing rules are the part of a strategy most likely to look good in-sample
+# and fail afterwards. Treat these weights as unvalidated until the backtest
+# has measured them.
+regime:
+  enabled: true
+  min_exposure: 0.30            # floor in the worst assessed conditions
+  max_exposure: 1.00
+  # Cut an over-invested book down to the target, not just stop buying.
+  # Only once invested capital is `trim_band` above target, then all the
+  # way to it, pro rata across holdings — so a few points of daily drift
+  # in the target cause no trading.
+  trim_above_target: true
+  trim_band: 0.10
+  trend_window: 200             # sessions for the benchmark moving average
+  weights:
+    trend: 0.50                 # benchmark vs its long average — most robust
+    volatility: 0.20            # VIX level
+    credit: 0.20                # high-yield spread vs its own 2y range
+    curve: 0.10                 # 10y-2y, context rather than trigger
+
+# ---- Data sources ----------------------------------------------------------
+data:
+  price_provider: "yfinance"    # yfinance -> stooq fallback (both keyless)
+  fundamentals_provider: "sec-edgar"   # weekly, scripts/build_edgar_fundamentals.py
+  alpha_vantage:
+    enabled: false              # the free quota is the S&P system's
+    daily_budget: 22            # stay under the 25/day free cap
+    use_for: "verify_candidate" # only confirm the single chosen name/day
+  benchmark: "IWM"             # Russell 2000: compare like with like, not with SPY
+  price_lookback_days: 420      # ~ 18 months of daily bars
+
+# ---- Universe --------------------------------------------------------------
+# Built weekly by scripts/build_smallcap_universe.py (Nasdaq screener, SEC
+# fallback) as a WIDE candidate list; the size band is applied per session by
+# the market-cap filters above, on point-in-time market caps.
+universe:
+  source: file
+
+# ---- Files -----------------------------------------------------------------
+paths:
+  state_dir: "state"
+  cache_dir: "state_smallcap/cache"
+  portfolio_json: "state_smallcap/portfolio.json"          # committed: positions + cash
+  trades_csv: "state_smallcap/trades.csv"                  # committed: closed trades
+  equity_csv: "state_smallcap/equity_curve.csv"            # committed: daily equity
+  screen_csv: "state_smallcap/last_screen.csv"             # committed: today's ranking
+  factor_history_csv: "state_smallcap/factor_history.csv"  # legacy path; not used for fixed-horizon labels
+  decision_history_csv: "state_smallcap/decision_history.csv" # daily scores, actions and realized lifecycle outcomes
+  signal_outcomes_csv: "state_smallcap/signal_outcomes.csv" # closed trades linked to entry-time signals
+  lifecycle_evaluation_json: "state_smallcap/lifecycle_evaluation.json" # descriptive signal-quality review
+  fundamentals_csv: "state_smallcap/fundamentals.csv"      # committed weekly -> PIT hist
+  weights_history: "state_smallcap/weights_history.csv"    # committed: learning log
+  run_log: "state_smallcap/run_log.csv"                    # committed: one row per run
+  prices_cache: "state_smallcap/cache/prices.csv.gz"       # gitignored, rebuilt daily
+  macro_csv: "state_smallcap/macro.csv"                    # committed: FRED series, PIT via lags
+  av_usage: "state_smallcap/cache/av_usage.json"           # API quota bookkeeping
+  excel_report: "state_smallcap/Portfolio.xlsx"
+  universe_csv: "state_smallcap/universe.csv"     # built weekly, see above
+  universe_history_csv: "state_smallcap/universe_history.csv" # dated point-in-time S&P 500 membership
+  dashboard_json: "docs/data/dashboard_smallcap.json"

@@ -424,6 +424,52 @@ def test_vol_adjusted_momentum_prefers_the_steadier_trend():
     assert m.loc["STEADY", "volatility"] < m.loc["NOISY", "volatility"]
 
 
+def _reference_factors(close: pd.DataFrame, volume: pd.DataFrame, ticker: str) -> dict:
+    """The original per-Series pandas computation, kept as an oracle."""
+    col_full = close[ticker].dropna()
+    col = col_full.tail(factors.WINDOW_ROWS)
+    last = float(col.iloc[-1])
+    rets = col.pct_change().dropna()
+    aligned = (close[ticker] * volume[ticker]).dropna()
+    return {
+        "above_ma50": last / float(col.tail(50).mean()) - 1.0,
+        "above_ma200": last / float(col.tail(200).mean()) - 1.0,
+        "volatility": float(rets.tail(60).std() * np.sqrt(252)),
+        "dist_52w_high": last / float(col.tail(252).max()) - 1.0,
+        "mom_12m_1m": float(col.iloc[-22] / col.iloc[-253] - 1.0),
+        "dollar_volume": float(aligned.tail(20).mean()),
+        "rsi14": factors.rsi(col_full, 14),
+        "macd_hist": factors.macd_hist(col_full),
+    }
+
+
+def test_fast_price_factors_are_bit_identical_to_the_series_version():
+    """The numpy/vectorised path must not move a single value.
+
+    Same promise as the earlier replay speed-up: faster, never different.
+    Covers late listings, delistings, gaps inside a history (which must take
+    the per-series RSI/MACD path) and volume with missing rows and columns.
+    """
+    rng = np.random.default_rng(12)
+    idx = pd.bdate_range("2019-01-01", periods=700)
+    n = 40
+    close = pd.DataFrame(100 * np.exp(np.cumsum(rng.normal(0, 0.015, (len(idx), n)), axis=0)),
+                         index=idx, columns=[f"T{i}" for i in range(n)])
+    close.iloc[:200, :8] = np.nan                       # listed late
+    close.iloc[-30:, 8:12] = np.nan                     # delisted
+    for j in range(12, 20):                             # interior gaps
+        close.iloc[rng.integers(300, 650, size=4), j] = np.nan
+    volume = pd.DataFrame(rng.uniform(1e5, 1e7, (len(idx), n)), index=idx, columns=close.columns)
+    volume.iloc[rng.integers(0, 700, 60), rng.integers(0, n, 60)] = np.nan
+    fast = factors.price_factors(close, volume)
+    for ticker in close.columns:
+        ref = _reference_factors(close, volume, ticker)
+        for key, want in ref.items():
+            got = fast.loc[ticker, key]
+            assert (np.isnan(want) and np.isnan(got)) or got == want, (
+                f"{ticker} {key}: {got!r} != {want!r}")
+
+
 def test_size_band_has_a_point_in_time_upper_bound():
     cfg = _cfg()
     cfg._d["filters"]["min_market_cap"] = 3e8
@@ -2326,6 +2372,32 @@ def test_ledger_widens_for_a_new_column_instead_of_dropping_it():
     assert list(day2.loc[tickers, "composite"]) == list(second.loc[tickers, "composite"])
 
 
+def test_ledger_still_dedupes_a_rerun_session_with_the_date_cache():
+    """Skipping the key read must never let a re-run write duplicates."""
+    cfg = _cfg()
+    state = portfolio.PortfolioState.new(10_000.0)
+    tickers = ["AAA", "BBB", "CCC"]
+    with tempfile.TemporaryDirectory() as td:
+        cfg.root = Path(td)
+        path = cfg.path("decision_history_csv")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        scored = _ledger_scored(tickers, z_macro=True)
+        day1, day2 = pd.Timestamp("2020-01-02"), pd.Timestamp("2020-01-03")
+        pipeline._append_decision_history(cfg, scored, state, day1, None, [], {})
+        pipeline._append_decision_history(cfg, scored, state, day2, None, [], {})
+        pipeline._append_decision_history(cfg, scored, state, day2, None, [], {})  # re-run
+        assert len(pd.read_csv(path)) == 6
+        # An outside write (another process, a git pull) changes the size;
+        # the cache must notice rather than trust its stale date set.
+        extra = pd.read_csv(path).iloc[:3].assign(data_date="2020-01-06")
+        extra.to_csv(path, mode="a", header=False, index=False)
+        pipeline._append_decision_history(cfg, scored, state, pd.Timestamp("2020-01-06"),
+                                          None, [], {})
+        back = pd.read_csv(path)
+    assert len(back) == 9
+    assert not back.duplicated(subset=["data_date", "ticker"]).any()
+
+
 def _credit_macro(baa: list[float] | None, hy: list[float] | None):
     """Macro frame carrying either or both credit spreads."""
     rows = []
@@ -2925,6 +2997,80 @@ def test_edgar_builder_refuses_to_run_without_a_declared_identity():
     finally:
         if saved is not None:
             os.environ["SEC_USER_AGENT"] = saved
+
+
+def test_smallcap_config_runs_the_whole_engine_end_to_end():
+    """config_smallcap.yml through a full replay: its own universe file, SEC-
+    style fundamentals with an F-score, IWM as benchmark, the size band, and
+    the reduced block set. Catches a hard-coded path or block name anywhere
+    in the engine before the first live run does."""
+    import shutil
+    import sys as _sys
+    import yaml
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    import backtest as bt
+
+    rng = np.random.default_rng(42)
+    tickers = [f"SC{i:02d}" for i in range(45)]
+    sectors = ["Industrials", "Information Technology", "Health Care",
+               "Financials", "Consumer Discretionary"]
+    prices = _synthetic_price_history(tickers + ["IWM"])
+    weeks = pd.date_range("2015-12-20", "2016-06-30", freq="W-SUN")
+    # Three below the band, three above, the rest inside — set explicitly,
+    # since a random draw rarely lands under $300M on this range.
+    caps = {t: float(c) for t, c in zip(tickers, rng.uniform(4e8, 9e9, len(tickers)))}
+    for t in tickers[:3]:
+        caps[t] = 1.5e8
+    for t in tickers[3:6]:
+        caps[t] = 3e10
+    rows = []
+    for t in tickers:
+        base = {"pe_ratio": rng.uniform(6, 40), "pb_ratio": rng.uniform(0.6, 6),
+                "ps_ratio": rng.uniform(0.3, 8), "ev_ebitda": rng.uniform(4, 25),
+                "fcf_yield": rng.uniform(-0.02, 0.12), "roe": rng.uniform(-0.05, 0.35),
+                "gross_margin": rng.uniform(0.15, 0.7), "net_margin": rng.uniform(-0.05, 0.25),
+                "net_debt_ebitda": rng.uniform(-1, 3), "revenue_growth": rng.normal(0.08, 0.15),
+                "earnings_growth": rng.normal(0.1, 0.3), "market_cap": caps[t],
+                "f_score": float(rng.integers(0, 10))}
+        for w in weeks:
+            rows.append({"asof": w.strftime("%Y-%m-%d"), "ticker": t, **base,
+                         "last_earnings_date": "2015-11-01",
+                         "earnings_surprise_pct": np.nan})
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        shutil.copy(ROOT / "config_smallcap.yml", root / "config_smallcap.yml")
+        cfg = yaml.safe_load(open(root / "config_smallcap.yml"))
+        uni = root / cfg["paths"]["universe_csv"]
+        uni.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"ticker": tickers, "name": tickers,
+                      "sector": [sectors[i % 5] for i in range(len(tickers))],
+                      "industry": "", "date_added": ""}).to_csv(uni, index=False)
+        fund = root / cfg["paths"]["fundamentals_csv"]
+        pd.DataFrame(rows).to_csv(fund, index=False)
+
+        out = root / "out"
+        summary = bt.run_backtest(
+            root / "config_smallcap.yml", prices, date(2016, 1, 4),
+            date(2016, 4, 29), out, warmup_sessions=320,
+        )
+        panel = pd.read_csv(out / "factor_panel.csv.gz")
+
+    conf = summary["configuration"]
+    assert set(conf["factor_weights"]) == {"value", "quality", "momentum", "growth", "macro"}
+    assert summary["benchmark"]["total_return"] is not None
+    # The size band held every session: nothing outside $300M-$10B is eligible.
+    eligible = panel[panel["eligible"].astype(str).str.lower() == "true"]
+    assert not eligible.empty
+    ok_caps = {t for t, c in caps.items() if 3e8 <= c <= 1e10}
+    assert set(eligible["ticker"]) <= ok_caps
+    reasons = panel["exclude_reason"].fillna("")
+    assert reasons.str.contains("market cap too large").any()
+    assert reasons.str.contains("market cap too small").any()
+    # The new signals reached the scorer.
+    assert panel["z_f_score"].notna().any()
+    assert panel["z_mom_12m_1m_va"].notna().any()
+    assert panel["block_quality"].notna().any()
 
 
 def pytest_raises(exc_type):

@@ -16,3 +16,6 @@ state/cache/prices.csv.gz
 
 # Local results from historical replay; upload as an Actions artifact when needed.
 backtest-results/
+
+# Small/mid-cap system: same rule for its price cache.
+state_smallcap/cache/

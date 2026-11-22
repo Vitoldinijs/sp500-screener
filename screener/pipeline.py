@@ -381,11 +381,29 @@ def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
     # source of the mixed-dtype warnings: pandas infers types per chunk, and
     # a column that is text in one chunk and all-NaN in another comes back
     # inconsistent. Naming the columns and their type removes both problems.
+    #
+    # And only when they can matter. Duplicates arise only when a session is
+    # re-run for a date already on file; a replay moves strictly forward, so
+    # re-reading every key each session made the cost grow with the square
+    # of the ledger — tolerable at 500 names, ruinous at 2,500 over seven
+    # years (~4 million rows). The dates already on file are remembered per
+    # process, keyed by file size so an outside write forces a fresh look,
+    # and the full keys are read only when today's date is among them.
     existing = pd.DataFrame()
+    today = str(pd.Timestamp(data_date).date())
     if path.exists():
         try:
-            existing = pd.read_csv(path, usecols=["data_date", "ticker"],
-                                   dtype=str)
+            size = path.stat().st_size
+            cached = _LEDGER_DATES.get(str(path))
+            if cached is not None and cached[0] == size:
+                dates_on_file = cached[1]
+            else:
+                dates_on_file = set(pd.read_csv(path, usecols=["data_date"],
+                                                dtype=str)["data_date"])
+                _LEDGER_DATES[str(path)] = (size, dates_on_file)
+            if today in dates_on_file:
+                existing = pd.read_csv(path, usecols=["data_date", "ticker"],
+                                       dtype=str)
         except (ValueError, OSError, pd.errors.ParserError) as exc:
             _log(f"could not read decision history keys: {exc}")
 
@@ -530,6 +548,18 @@ def _append_decision_history(cfg: Config, scored: pd.DataFrame, state,
         ]
     if not fresh.empty:
         fresh.to_csv(path, mode="a", header=not path.exists(), index=False)
+    try:
+        dates = _LEDGER_DATES.get(str(path), (0, set()))[1]
+        if not fresh.empty:
+            dates = dates | set(fresh["data_date"].astype(str))
+        _LEDGER_DATES[str(path)] = (path.stat().st_size, dates)
+    except OSError:
+        _LEDGER_DATES.pop(str(path), None)
+
+
+# Dates already in each decision ledger, with the file size they were read
+# at; see _append_decision_history.
+_LEDGER_DATES: dict[str, tuple[int, set]] = {}
 
 
 def _safe_float(value):

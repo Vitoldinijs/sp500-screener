@@ -1,0 +1,88 @@
+# ============================================================================
+#  Small/mid-cap system — weekly data refresh.
+#
+#  1. Rebuild the candidate list (Nasdaq screener, SEC fallback).
+#  2. Rebuild point-in-time fundamentals for it from SEC filings and fold the
+#     recent weeks into state_smallcap/fundamentals.csv.
+#
+#  The daily small-cap run needs both, so trigger this once by hand before
+#  the first daily run (Actions -> smallcap-weekly -> Run workflow).
+# ============================================================================
+name: smallcap-weekly
+
+on:
+  schedule:
+    - cron: "40 5 * * 0"          # Sunday 05:40 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: smallcap-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build the candidate list
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python scripts/build_smallcap_universe.py --config config_smallcap.yml
+
+      - name: Archive this week's list
+        # Dated snapshots are what a later replay uses as point-in-time
+        # membership, exactly as the S&P system does with its index list.
+        run: |
+          python - <<'PY'
+          from datetime import date
+          import pandas as pd
+          from screener.config import Config
+          from screener import universe
+          cfg = Config.load("config_smallcap.yml")
+          uni = pd.read_csv(cfg.path("universe_csv"))
+          universe.append_snapshot(uni, cfg.path("universe_history_csv"), date.today())
+          print(f"archived {len(uni)} names")
+          PY
+
+      - name: Rebuild fundamentals from SEC filings
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          # Six weeks back each time: a late or amended filing can change a
+          # week already on file, and re-building it replaces the old row.
+          start=$(date -u -d '42 days ago' +%Y-%m-%d)
+          # Small companies have more gaps than the S&P (no gross margin,
+          # no current-asset split, younger filers), so the coverage abort
+          # is set looser than for the S&P backtest; it still stops a run
+          # that has clearly broken.
+          python scripts/build_edgar_fundamentals.py \
+            --config config_smallcap.yml --start "$start" \
+            --append-to state_smallcap/fundamentals.csv \
+            --incomplete-fatal-pct 60
+
+      - name: Commit
+        run: |
+          git config user.name  "screener-bot"
+          git config user.email "screener-bot@users.noreply.github.com"
+          git add -A state_smallcap
+          if git diff --staged --quiet; then echo "nothing changed"; exit 0; fi
+          git commit -m "smallcap weekly data $(date -u +%Y-%m-%d)"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin ${{ github.ref_name }} && \
+            git push origin HEAD:${{ github.ref_name }} && exit 0
+            echo "push attempt $attempt failed; retrying"; sleep 10
+          done
+          echo "could not push after 3 attempts" >&2; exit 1

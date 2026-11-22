@@ -202,7 +202,8 @@ def weekly_rows(ticker: str, states: pd.DataFrame, close: pd.Series,
     return r[SCHEMA]
 
 
-def quality_report(out: pd.DataFrame, cfg: Config) -> list[str]:
+def quality_report(out: pd.DataFrame, cfg: Config,
+                   incomplete_fatal_pct: float = 25.0) -> list[str]:
     """Print coverage, filter impact, live overlap and anchors.
 
     Returns a list of fatal problems; empty means the file may be written.
@@ -226,9 +227,10 @@ def quality_report(out: pd.DataFrame, cfg: Config) -> list[str]:
     print(f"\n[edgar] ticker-weeks failing 'fundamentals incomplete' "
           f"(> {limit} of {len(counted)} missing), %:")
     print("  " + "  ".join(f"{y}: {v}" for y, v in excluded.items()))
-    if (excluded > 25).any():
-        fatal.append("over a quarter of ticker-weeks would be excluded as "
-                     "incomplete in some year — the reconstruction is too thin")
+    if (excluded > incomplete_fatal_pct).any():
+        fatal.append(f"over {incomplete_fatal_pct:g}% of ticker-weeks would be "
+                     "excluded as incomplete in some year — the reconstruction "
+                     "is too thin")
 
     # Overlap with the live yfinance snapshots: same tickers, nearby dates.
     live_path = cfg.path("fundamentals_csv")
@@ -288,6 +290,14 @@ def main(argv=None) -> int:
     ap.add_argument("--start", default="2020-01-02")
     ap.add_argument("--end", default=None)
     ap.add_argument("--output", default=str(ROOT / OUTPUT))
+    ap.add_argument("--append-to", default=None,
+                    help="merge the new weeks into this existing snapshot file "
+                         "(plain CSV, the live fundamentals path) instead of "
+                         "writing --output; existing (asof, ticker) rows are "
+                         "replaced by the fresh ones")
+    ap.add_argument("--incomplete-fatal-pct", type=float, default=25.0,
+                    help="abort if more than this share of ticker-weeks would "
+                         "fail the incomplete-fundamentals filter in a year")
     ap.add_argument("--limit", type=int, default=0,
                     help="only the first N tickers (for a quick trial)")
     args = ap.parse_args(argv)
@@ -362,16 +372,29 @@ def main(argv=None) -> int:
         print(f"[edgar] no usable history: {', '.join(failed[:30])}"
               + (" ..." if len(failed) > 30 else ""))
 
-    fatal = quality_report(out, cfg)
+    fatal = quality_report(out, cfg, args.incomplete_fatal_pct)
     if fatal:
         for problem in fatal:
             print(f"[edgar] FATAL: {problem}", file=sys.stderr)
         print("[edgar] not writing the file", file=sys.stderr)
         return 3
 
-    target = Path(args.output)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(target, index=False, compression="gzip")
+    if args.append_to:
+        # Live weekly refresh: fold the recent weeks into the running file.
+        # Re-built weeks replace their old rows, since a filing made since
+        # the last run can change a week the file already holds.
+        target = Path(args.append_to)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            old = pd.read_csv(target)
+            out = (pd.concat([old, out], ignore_index=True)
+                   .drop_duplicates(subset=["asof", "ticker"], keep="last")
+                   .sort_values(["asof", "ticker"]).reset_index(drop=True))
+        out.to_csv(target, index=False)
+    else:
+        target = Path(args.output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        out.to_csv(target, index=False, compression="gzip")
     print(f"\n[edgar] wrote {len(out):,} rows, {out['ticker'].nunique()} tickers, "
           f"{out['asof'].min()} .. {out['asof'].max()} -> {target}")
     return 0

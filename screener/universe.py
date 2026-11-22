@@ -147,6 +147,15 @@ def historical_snapshot(path: Path, asof: date | str) -> pd.DataFrame | None:
 def fetch_current_universe(cfg: Config, allow_network: bool = True) -> pd.DataFrame:
     """Return today's constituents, using the committed CSV as a fallback."""
     snapshot = cfg.path("universe_csv")
+    # A universe defined by size rather than index membership is built by its
+    # own weekly script (scripts/build_smallcap_universe.py) and only read
+    # here; the daily run must not replace it with the S&P 500 page.
+    source = str((cfg.get("universe") or {}).get("source", "sp500_wikipedia"))
+    if source == "file":
+        if snapshot.exists():
+            return _normalise(pd.read_csv(snapshot))
+        raise RuntimeError(f"universe source is 'file' but {snapshot} does not exist "
+                           "yet — run scripts/build_smallcap_universe.py first")
     if allow_network:
         try:
             df = fetch_from_wikipedia()

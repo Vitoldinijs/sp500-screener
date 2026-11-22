@@ -1,0 +1,100 @@
+# ============================================================================
+#  Small/mid-cap system — daily paper-trading run.
+#
+#  The same engine as `daily`, run on config_smallcap.yml: its own universe,
+#  its own state in state_smallcap/, its own dashboard data. It runs beside
+#  the S&P system and shares nothing with it but the code.
+# ============================================================================
+name: smallcap-daily
+
+on:
+  schedule:
+    - cron: "45 22 * * 1-5"       # half an hour after the S&P run
+  workflow_dispatch:
+    inputs:
+      offline:
+        description: "Run without network (use cached prices)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: smallcap-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90             # ~2,500 names: the first, cold-cache run is slow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the weekly data exists
+        id: ready
+        run: |
+          if [ -f state_smallcap/universe.csv ] && [ -f state_smallcap/fundamentals.csv ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No small-cap universe/fundamentals yet — run the smallcap-weekly workflow once first. Skipping."
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore the price cache
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/cache@v4
+        with:
+          path: state_smallcap/cache/prices.csv.gz
+          key: smallcap-price-cache-${{ github.run_id }}
+          restore-keys: |
+            smallcap-price-cache-
+
+      - name: Run the daily job
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python -m screener daily --config config_smallcap.yml \
+            ${{ inputs.offline && '--offline' || '' }}
+
+      - name: Export dashboard data
+        if: steps.ready.outputs.ok == 'true'
+        run: python scripts/export_dashboard_data.py --config config_smallcap.yml
+
+      - name: Commit
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          git config user.name  "screener-bot"
+          git config user.email "screener-bot@users.noreply.github.com"
+          git add -A state_smallcap docs/data/dashboard_smallcap.json
+          if git diff --staged --quiet; then echo "nothing changed"; exit 0; fi
+          git commit -m "smallcap daily run $(date -u +%Y-%m-%d)"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin ${{ github.ref_name }} && \
+            git push origin HEAD:${{ github.ref_name }} && exit 0
+            echo "push attempt $attempt failed; retrying"; sleep 10
+          done
+          echo "could not push after 3 attempts" >&2; exit 1
+
+      - name: Summary
+        if: always() && steps.ready.outputs.ok == 'true'
+        run: |
+          {
+            echo "### Small/mid-cap run — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            echo '```'
+            head -1 state_smallcap/run_log.csv 2>/dev/null
+            tail -1 state_smallcap/run_log.csv 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

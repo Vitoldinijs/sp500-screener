@@ -61,6 +61,9 @@
   header.top .wrap { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   header.top h1 { font-size: 1.05rem; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
   header.top .strategy { color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+  .systems { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .systems a { padding: 0.3rem 0.85rem; font-size: 0.82rem; color: var(--muted); text-decoration: none; }
+  .systems a.on { background: var(--line); color: inherit; font-weight: 600; }
 
   /* ---- hero -------------------------------------------------------- */
   .hero {
@@ -211,6 +214,10 @@
 <header class="top">
   <div class="wrap">
     <h1>sp500-screener</h1>
+    <nav class="systems" aria-label="Choose system">
+      <a href="#sp500" id="sysSp500">S&amp;P 500</a>
+      <a href="#smallcap" id="sysSmall">Small &amp; Mid cap</a>
+    </nav>
     <span class="strategy" id="strategyLabel">loading —</span>
   </div>
 </header>
@@ -222,6 +229,17 @@
 <script>
 const $ = (sel, el = document) => el.querySelector(sel);
 const app = $('#app');
+
+// Two systems share this page. The choice lives in the URL hash so a link
+// opens straight onto either one; switching reloads, which also disposes of
+// the chart instance cleanly.
+const SYSTEMS = {
+  sp500:    { file: 'data/dashboard.json',          bench: 'S&P 500 (SPY)' },
+  smallcap: { file: 'data/dashboard_smallcap.json', bench: 'Russell 2000 (IWM)' },
+};
+const SYSTEM = (location.hash || '').slice(1) === 'smallcap' ? 'smallcap' : 'sp500';
+const BENCH = SYSTEMS[SYSTEM].bench;
+window.addEventListener('hashchange', () => location.reload());
 
 const fmtUSD = (v) => v == null ? '—' :
   '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -297,7 +315,7 @@ function renderHero(d) {
     el('div', {
       class: 'bench',
       text: stats.benchmark_return != null
-        ? `S&P 500 (SPY) over the same span: ${fmtPct(stats.benchmark_return)}`
+        ? `${BENCH} over the same span: ${fmtPct(stats.benchmark_return)}`
         : 'Benchmark not available yet'
     }),
   );
@@ -352,7 +370,7 @@ function renderEquitySection(d) {
   const legend = el('div', { class: 'chart-legend' });
   legend.append(
     el('span', { html: '<span class="sw" style="background:#d4a24c"></span>Portfolio' }),
-    el('span', { html: '<span class="sw" style="background:#68727d"></span>S&amp;P 500 (SPY)' })
+    el('span', { html: '<span class="sw" style="background:#68727d"></span>' + BENCH.replace('&', '&amp;') })
   );
 
   chartWrap.append(toolbar, chartBox, legend);
@@ -510,7 +528,7 @@ function tvChart(host, labels, portfolio, benchmark) {
     readout.innerHTML =
       '<span class="d">' + (date ? fmtDate(date) : '') + '</span>' +
       '<span class="p">Portfolio ' + pct(p) + '</span>' +
-      '<span class="b">SPY ' + pct(b) + '</span>';
+      '<span class="b">' + (SYSTEM === 'smallcap' ? 'IWM ' : 'SPY ') + pct(b) + '</span>';
   };
   const lastIdx = portfolio.length - 1;
   paint(labels[lastIdx], portfolio[lastIdx], benchmark[lastIdx]);
@@ -973,13 +991,16 @@ function renderFooter(d) {
 }
 
 async function main() {
+  $(SYSTEM === 'smallcap' ? '#sysSmall' : '#sysSp500').classList.add('on');
   let d;
   try {
-    const res = await fetch('data/dashboard.json', { cache: 'no-store' });
+    const res = await fetch(SYSTEMS[SYSTEM].file, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     d = await res.json();
   } catch (err) {
-    $('#stateMsg').textContent = 'No data published yet — the first daily run will populate this page.';
+    $('#stateMsg').textContent = SYSTEM === 'smallcap'
+      ? 'The small & mid cap system has not published yet — it starts after its first weekly data refresh and daily run.'
+      : 'No data published yet — the first daily run will populate this page.';
     return;
   }
 
