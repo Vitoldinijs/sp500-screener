@@ -43,6 +43,17 @@ on:
         required: false
         type: string
         default: ""
+      system:
+        description: >-
+          Which system to replay. smallcap = the $300M-$10B system
+          (config_smallcap.yml): always on SEC fundamentals, and run the
+          smallcap-weekly workflow once first so its universe exists.
+        required: false
+        type: choice
+        default: "sp500"
+        options:
+          - sp500
+          - smallcap
       fundamentals:
         description: >-
           none = price/macro blocks only (as before). edgar = rebuild
@@ -67,7 +78,7 @@ jobs:
   prefetch:
     if: inputs.mode == 'price-macro-sweep' || inputs.mode == 'factor-ic'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240           # the small-cap universe is ~5x the S&P
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,6 +96,8 @@ jobs:
             state/macro.csv
             screener/data/sp500.csv
             state/cache/fundamentals_edgar.csv.gz
+            state_smallcap/cache/prices.csv.gz
+            state_smallcap/macro.csv
           # Restore from any recent entry to avoid re-downloading, but SAVE
           # under a run-unique key below.
           key: backtest-data-${{ github.run_id }}
@@ -104,9 +117,10 @@ jobs:
           else default_start=2024-01-02; fi
           args=(--start "${BACKTEST_START:-$default_start}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          if [[ "${{ inputs.system }}" == 'smallcap' ]]; then args+=(--config config_smallcap.yml); fi
           python scripts/prefetch_prices.py "${args[@]}"
       - name: Rebuild point-in-time fundamentals from SEC filings
-        if: inputs.fundamentals == 'edgar'
+        if: inputs.fundamentals == 'edgar' || inputs.system == 'smallcap'
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           BACKTEST_START: ${{ inputs.start_date }}
@@ -117,6 +131,10 @@ jobs:
           else default_start=2024-01-02; fi
           args=(--start "${BACKTEST_START:-$default_start}")
           if [[ -n "$BACKTEST_END" ]]; then args+=(--end "$BACKTEST_END"); fi
+          if [[ "${{ inputs.system }}" == 'smallcap' ]]; then
+            # Small companies have more structural gaps; see smallcap-weekly.
+            args+=(--config config_smallcap.yml --incomplete-fatal-pct 60)
+          fi
           # Fails, and writes nothing, if the quality report finds the
           # result grossly wrong — a split error above all.
           python scripts/build_edgar_fundamentals.py "${args[@]}"
@@ -135,6 +153,8 @@ jobs:
             state/macro.csv
             screener/data/sp500.csv
             state/cache/fundamentals_edgar.csv.gz
+            state_smallcap/cache/prices.csv.gz
+            state_smallcap/macro.csv
           key: backtest-data-${{ github.run_id }}
 
   # ---------------------------------------------------------------------
@@ -190,6 +210,8 @@ jobs:
             state/macro.csv
             screener/data/sp500.csv
             state/cache/fundamentals_edgar.csv.gz
+            state_smallcap/cache/prices.csv.gz
+            state_smallcap/macro.csv
           # This run's entry, written by prefetch. No restore-keys
           # fallback: silently running on another run's data is exactly the
           # failure being fixed here.
@@ -206,9 +228,15 @@ jobs:
           # into the restored cache. Without it every leg re-downloads ~1.5M
           # rows it already has, which was most of the previous run's wall
           # clock and the reason the legs had to be throttled.
-          args=(--offline --require-inclusion-dates
-                --output-dir "backtest-results/${{ matrix.name }}" --verbose)
-          if [[ "${{ inputs.fundamentals }}" == 'edgar' ]]; then
+          args=(--offline --output-dir "backtest-results/${{ matrix.name }}" --verbose)
+          if [[ "${{ inputs.system }}" == 'smallcap' ]]; then
+            # No index, so no inclusion dates: membership is the size band,
+            # applied per session on point-in-time market caps.
+            args+=(--config config_smallcap.yml)
+          else
+            args+=(--require-inclusion-dates)
+          fi
+          if [[ "${{ inputs.fundamentals }}" == 'edgar' || "${{ inputs.system }}" == 'smallcap' ]]; then
             args+=(--fundamentals-file state/cache/fundamentals_edgar.csv.gz)
           else
             args+=(--no-fundamentals)
@@ -266,6 +294,8 @@ jobs:
             state/macro.csv
             screener/data/sp500.csv
             state/cache/fundamentals_edgar.csv.gz
+            state_smallcap/cache/prices.csv.gz
+            state_smallcap/macro.csv
           key: backtest-data-${{ github.run_id }}
           fail-on-cache-miss: true
 
@@ -275,9 +305,15 @@ jobs:
           BACKTEST_START: ${{ inputs.start_date }}
           BACKTEST_END: ${{ inputs.end_date }}
         run: |
-          args=(--offline --require-inclusion-dates
-                --output-dir backtest-results/factor-ic --verbose)
-          if [[ "${{ inputs.fundamentals }}" == 'edgar' ]]; then
+          args=(--offline --output-dir backtest-results/factor-ic --verbose)
+          if [[ "${{ inputs.system }}" == 'smallcap' ]]; then
+            # No index, so no inclusion dates: membership is the size band,
+            # applied per session on point-in-time market caps.
+            args+=(--config config_smallcap.yml)
+          else
+            args+=(--require-inclusion-dates)
+          fi
+          if [[ "${{ inputs.fundamentals }}" == 'edgar' || "${{ inputs.system }}" == 'smallcap' ]]; then
             args+=(--fundamentals-file state/cache/fundamentals_edgar.csv.gz)
           else
             args+=(--no-fundamentals)
